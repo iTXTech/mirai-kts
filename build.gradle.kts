@@ -30,7 +30,7 @@ dependencies {
     implementation(kotlin("compiler-embeddable"))
     implementation(kotlin("scripting-compiler-embeddable"))
     implementation(kotlin("scripting-compiler-impl-embeddable"))
-    implementation("net.sf.trove4j:trove4j:3.0.3")
+    implementation("org.jetbrains.intellij.deps:trove4j:1.0.20200330")
 
     implementation("net.mamoe:mirai-core:1.0-RC2-1")
     implementation("net.mamoe:mirai-console:0.5.1")

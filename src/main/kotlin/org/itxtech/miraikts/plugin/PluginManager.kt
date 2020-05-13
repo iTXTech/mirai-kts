@@ -25,32 +25,34 @@
 package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.newSingleThreadContext
-import org.itxtech.miraikts.MiraiKts
+import kotlinx.coroutines.newFixedThreadPoolContext
+import net.mamoe.mirai.utils.currentTimeMillis
+import org.itxtech.miraikts.*
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
-import org.jetbrains.kotlin.cli.common.repl.KotlinJsr223JvmScriptEngineFactoryBase
-import org.jetbrains.kotlin.cli.common.repl.ScriptArgsWithTypes
-import org.jetbrains.kotlin.script.jsr223.KotlinJsr223JvmLocalScriptEngine
-import org.jetbrains.kotlin.script.jsr223.KotlinStandardJsr223ScriptTemplate
+import org.jetbrains.kotlin.cli.common.repl.KotlinJsr223JvmScriptEngineBase
+import org.jetbrains.kotlin.cli.common.repl.ReplCompileResult
 import java.io.File
-import java.net.URLClassLoader
-import javax.script.Bindings
-import javax.script.ScriptContext
-import javax.script.ScriptEngine
 
 @OptIn(ObsoleteCoroutinesApi::class)
 open class PluginManager {
     protected val plDir: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "plugins").also { it.mkdirs() } }
     protected val plData: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "data").also { it.mkdirs() } }
-    protected val context = newSingleThreadContext("MiraiKts")
+    protected val cache: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "cache").also { it.mkdirs() } }
+    protected val context = newFixedThreadPoolContext(Runtime.getRuntime().availableProcessors(), "MiraiKts")
 
     init {
         setIdeaIoUseFallback()
+    }
+
+    private fun launch(b: suspend CoroutineScope.() -> Unit) {
         MiraiKts.launch(context) {
-            Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
-            this@PluginManager.javaClass.classLoader.loadClass("net.mamoe.mirai.console.plugins.JsonConfig")
+            if (Thread.currentThread().contextClassLoader != this@PluginManager.javaClass.classLoader) {
+                Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
+            }
+            b.invoke(this)
         }
     }
 
@@ -66,66 +68,67 @@ open class PluginManager {
             MiraiKts.logger.error("数据文件夹不是一个文件夹！" + MiraiKts.dataFolder.absolutePath)
         } else {
             plDir.listFiles()?.forEach { file ->
-                loadPlugin(file)
+                loadPlugin(file, true)
             }
         }
     }
 
-    open fun loadPlugin(file: File): Boolean {
-        if (file.exists() && file.isFile && file.absolutePath.endsWith(".kts")) {
-            MiraiKts.logger.info("正在加载 Kts 插件：" + file.absolutePath)
+    open fun loadPlugin(ktsFile: File, enable: Boolean = false): Boolean {
+        if (ktsFile.exists() && ktsFile.isFile && ktsFile.absolutePath.endsWith(".kts")) {
+            MiraiKts.logger.info("正在加载 Kts 插件：" + ktsFile.absolutePath)
             plugins.values.forEach {
-                if (it.file == file) {
+                if (it.file == ktsFile) {
                     return false
                 }
             }
 
-            MiraiKts.launch(context) {
-                val plugin = KtsEngine.scriptEngine.eval(file.readText()) as KtsPlugin
+            launch {
+                val engine = KtsEngineFactory.scriptEngine
+                val cacheFile = ktsFile.findCache(cache)
+
+                val compile = !cacheFile.exists()
+                val start = currentTimeMillis
+
+                val compiled: ReplCompileResult.CompiledClasses = if (compile) {
+                    (engine.compile(ktsFile.readText()) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
+                        .compiledData.apply {
+                        save(cacheFile)
+                    }
+                } else {
+                    cacheFile.readAsCache()
+                }
+
+                val plugin = engine.eval(compiled) as KtsPlugin
+
+                MiraiKts.logger.debug(
+                    (if (compile) "编译 " else "缓存 ") +
+                            "插件 \"${ktsFile.name}\" 加载耗时 " + (currentTimeMillis - start) + "ms"
+                )
+
                 plugin.manager = this@PluginManager
                 plugin.id = pluginId.value
-                plugin.file = file
+                plugin.file = ktsFile
                 plugins[pluginId.getAndIncrement()] = plugin
 
                 plugin.onLoad()
+                if (enable) {
+                    plugin.onEnable()
+                }
             }
             return true
         }
         return false
     }
 
-    open fun enablePlugins() = MiraiKts.launch(context) {
+    open fun enablePlugins() = launch {
         plugins.values.forEach {
             it.onEnable()
         }
     }
 
-    open fun disablePlugins() = MiraiKts.launch(context) {
+    open fun disablePlugins() = launch {
         plugins.values.forEach {
             it.onDisable()
         }
-    }
-}
-
-object KtsEngine : KotlinJsr223JvmScriptEngineFactoryBase() {
-    override fun getScriptEngine(): ScriptEngine {
-        val jars = arrayListOf<File>()
-        (javaClass.classLoader.parent as URLClassLoader).urLs.forEach {
-            jars.add(File(it.file))
-        }
-        (javaClass.classLoader as URLClassLoader).urLs.forEach {
-            jars.add(File(it.file))
-        }
-        return KotlinJsr223JvmLocalScriptEngine(
-            this, jars,
-            KotlinStandardJsr223ScriptTemplate::class.qualifiedName!!,
-            { ctx, types ->
-                ScriptArgsWithTypes(
-                    arrayOf(ctx.getBindings(ScriptContext.ENGINE_SCOPE)),
-                    types ?: emptyArray()
-                )
-            },
-            arrayOf(Bindings::class)
-        )
     }
 }
