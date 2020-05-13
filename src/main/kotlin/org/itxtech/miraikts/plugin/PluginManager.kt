@@ -25,10 +25,7 @@
 package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ObsoleteCoroutinesApi
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.newFixedThreadPoolContext
+import kotlinx.coroutines.*
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.*
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
@@ -47,8 +44,8 @@ open class PluginManager {
         setIdeaIoUseFallback()
     }
 
-    private fun launch(b: suspend CoroutineScope.() -> Unit) {
-        MiraiKts.launch(context) {
+    private fun launch(b: suspend CoroutineScope.() -> Unit): Job {
+        return MiraiKts.launch(context) {
             if (Thread.currentThread().contextClassLoader != this@PluginManager.javaClass.classLoader) {
                 Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
             }
@@ -62,18 +59,19 @@ open class PluginManager {
 
     protected val pluginId = atomic(0)
     protected val plugins = hashMapOf<Int, KtsPlugin>()
+    protected val loadingJobs = hashMapOf<Int, Job>()
 
     open fun loadPlugins() {
         if (!MiraiKts.dataFolder.isDirectory) {
             MiraiKts.logger.error("数据文件夹不是一个文件夹！" + MiraiKts.dataFolder.absolutePath)
         } else {
             plDir.listFiles()?.forEach { file ->
-                loadPlugin(file, true)
+                loadPlugin(file)
             }
         }
     }
 
-    open fun loadPlugin(ktsFile: File, enable: Boolean = false): Boolean {
+    open fun loadPlugin(ktsFile: File): Boolean {
         if (ktsFile.exists() && ktsFile.isFile && ktsFile.absolutePath.endsWith(".kts")) {
             MiraiKts.logger.info("正在加载 Kts 插件：" + ktsFile.absolutePath)
             plugins.values.forEach {
@@ -82,7 +80,8 @@ open class PluginManager {
                 }
             }
 
-            launch {
+            val id = pluginId.getAndIncrement()
+            loadingJobs[id] = launch {
                 val engine = KtsEngineFactory.scriptEngine
                 val cacheFile = ktsFile.findCache(cache)
 
@@ -106,14 +105,11 @@ open class PluginManager {
                 )
 
                 plugin.manager = this@PluginManager
-                plugin.id = pluginId.value
+                plugin.id = id
                 plugin.file = ktsFile
-                plugins[pluginId.getAndIncrement()] = plugin
+                plugins[id] = plugin
 
                 plugin.onLoad()
-                if (enable) {
-                    plugin.onEnable()
-                }
             }
             return true
         }
@@ -121,6 +117,12 @@ open class PluginManager {
     }
 
     open fun enablePlugins() = launch {
+        loadingJobs.forEach { entry ->
+            entry.value.invokeOnCompletion {
+                plugins[entry.key]?.onEnable()
+            }
+        }
+        loadingJobs.clear()
         plugins.values.forEach {
             it.onEnable()
         }

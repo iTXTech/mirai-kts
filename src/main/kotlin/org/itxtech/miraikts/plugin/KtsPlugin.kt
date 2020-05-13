@@ -82,6 +82,7 @@ class KtsPlugin(
     lateinit var file: File
     var id: Int = 0
     var enabled = false
+    val dataDir: File by lazy { manager.getPluginDataDir(info.name) }
 
     val logger: MiraiLogger by lazy {
         SimpleLogger("KtsPlugin ${info.name}") { priority, message, e ->

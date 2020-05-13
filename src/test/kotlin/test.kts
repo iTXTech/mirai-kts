@@ -46,9 +46,13 @@ miraiPlugin {
     }
 
     enable {
-        logger.info("KtsPlugin 已启用！")
+        logger.info("KtsPlugin 已启用！文件夹：" + dataDir.absolutePath)
         subscribeAlways<BotOnlineEvent> {
             logger.info("Bot已上线！$this")
         }
+    }
+
+    disable {
+        logger.info("KtsPlugin 已停用！")
     }
 }
