@@ -1,3 +1,27 @@
+/*
+ *
+ * Mirai Kts
+ *
+ * Copyright (C) 2020 iTX Technologies
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * @author PeratX
+ * @website https://github.com/iTXTech/mirai-kts
+ *
+ */
+
 package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
@@ -6,8 +30,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import org.itxtech.miraikts.MiraiKts
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
-import org.jetbrains.kotlin.script.jsr223.KotlinJsr223JvmLocalScriptEngineFactory
+import org.jetbrains.kotlin.cli.common.repl.KotlinJsr223JvmScriptEngineFactoryBase
+import org.jetbrains.kotlin.cli.common.repl.ScriptArgsWithTypes
+import org.jetbrains.kotlin.script.jsr223.KotlinJsr223JvmLocalScriptEngine
+import org.jetbrains.kotlin.script.jsr223.KotlinStandardJsr223ScriptTemplate
 import java.io.File
+import java.net.URLClassLoader
+import javax.script.Bindings
+import javax.script.ScriptContext
+import javax.script.ScriptEngine
 
 @OptIn(ObsoleteCoroutinesApi::class)
 open class PluginManager {
@@ -19,6 +50,7 @@ open class PluginManager {
         setIdeaIoUseFallback()
         MiraiKts.launch(context) {
             Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
+            this@PluginManager.javaClass.classLoader.loadClass("net.mamoe.mirai.console.plugins.JsonConfig")
         }
     }
 
@@ -49,7 +81,7 @@ open class PluginManager {
             }
 
             MiraiKts.launch(context) {
-                val plugin = KotlinJsr223JvmLocalScriptEngineFactory().scriptEngine.eval(file.readText()) as KtsPlugin
+                val plugin = KtsEngine.scriptEngine.eval(file.readText()) as KtsPlugin
                 plugin.manager = this@PluginManager
                 plugin.id = pluginId.value
                 plugin.file = file
@@ -62,15 +94,38 @@ open class PluginManager {
         return false
     }
 
-    open fun enablePlugins() {
+    open fun enablePlugins() = MiraiKts.launch(context) {
         plugins.values.forEach {
             it.onEnable()
         }
     }
 
-    open fun disablePlugins() {
+    open fun disablePlugins() = MiraiKts.launch(context) {
         plugins.values.forEach {
             it.onDisable()
         }
+    }
+}
+
+object KtsEngine : KotlinJsr223JvmScriptEngineFactoryBase() {
+    override fun getScriptEngine(): ScriptEngine {
+        val jars = arrayListOf<File>()
+        (javaClass.classLoader.parent as URLClassLoader).urLs.forEach {
+            jars.add(File(it.file))
+        }
+        (javaClass.classLoader as URLClassLoader).urLs.forEach {
+            jars.add(File(it.file))
+        }
+        return KotlinJsr223JvmLocalScriptEngine(
+            this, jars,
+            KotlinStandardJsr223ScriptTemplate::class.qualifiedName!!,
+            { ctx, types ->
+                ScriptArgsWithTypes(
+                    arrayOf(ctx.getBindings(ScriptContext.ENGINE_SCOPE)),
+                    types ?: emptyArray()
+                )
+            },
+            arrayOf(Bindings::class)
+        )
     }
 }
