@@ -43,6 +43,8 @@ miraiPlugin {
     info {
         name = "KtsPluginExample"
         version = "1.0.0"
+        author = "PeratX"
+        website = "https://github.com/iTXTech/mirai-kts/blob/master/src/test/kotlin/echoBot.kts"
     }
 
     load {

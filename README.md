@@ -17,6 +17,14 @@
 * 字节码缓存机制，减少编译次数
 * 施主别着急，更多功能即将加入。先看看 [例子](src/test/kotlin) 吧。
 
+## Mirai Kts 插件管理器 `kpm`
+
+1. 在 `mirai console` 中键入 `kpm` 获得帮助
+1. `kpm` (`Kotlin Script Plugin Manager`) 可`列出/启用/停用/加载插件`
+
+`kpm [list|enable|disable|load] (插件名/文件名)`
+
+
 ## 开源协议
 
     Copyright (C) 2020 iTX Technologies

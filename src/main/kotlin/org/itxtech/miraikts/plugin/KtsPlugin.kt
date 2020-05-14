@@ -70,7 +70,7 @@ class KtsPluginBuilder {
 
 class KtsPlugin(
     coroutineContext: CoroutineContext,
-    private val info: KtsPluginInfo,
+    val info: KtsPluginInfo,
     var load: (KtsPlugin.() -> Unit)? = null,
     var enable: (KtsPlugin.() -> Unit)? = null,
     var disable: (KtsPlugin.() -> Unit)? = null
@@ -119,5 +119,7 @@ class KtsPlugin(
 
 class KtsPluginInfo {
     lateinit var name: String
-    var version: String? = null
+    var version: String = "未知"
+    var author: String = "未知"
+    var website: String = ""
 }

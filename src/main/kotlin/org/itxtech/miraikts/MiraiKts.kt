@@ -32,7 +32,7 @@ object MiraiKts : PluginBase() {
 
     override fun onLoad() {
         manager.loadPlugins()
-        //manager.registerCommand()
+        manager.registerCommand()
     }
 
     override fun onEnable() {

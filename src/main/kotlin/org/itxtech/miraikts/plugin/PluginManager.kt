@@ -26,6 +26,7 @@ package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
+import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.*
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
@@ -131,6 +132,56 @@ open class PluginManager {
     open fun disablePlugins() = launch {
         plugins.values.forEach {
             it.onDisable()
+        }
+    }
+
+    open fun registerCommand() {
+        MiraiKts.registerCommand {
+            name = "kpm"
+            description = "Mirai Kts 插件管理器"
+            usage = "kpm [list|enable|disable|load] (插件名/文件名)"
+            onCommand {
+                if ((it.isEmpty() || (it[0] != "list" && it.size < 2))) {
+                    return@onCommand false
+                }
+                when (it[0]) {
+                    "list" -> {
+                        appendMessage("共加载了 " + plugins.size + " 个 Mirai Kts 插件。")
+                        plugins.values.forEach { p ->
+                            appendMessage(
+                                "Id：" + p.id + " 文件：" + p.file.name + " 名称：" + p.info.name + " 状态：" +
+                                        (if (p.enabled) "启用" else "停用") + " 版本：" + p.info.version +
+                                        " 作者：" + p.info.author
+
+                            )
+                            if (p.info.website != "") {
+                                appendMessage("主页：" + p.info.website)
+                            }
+                        }
+                    }
+                    "load" -> {
+                        if (!loadPlugin(File(plDir.absolutePath + File.separatorChar + it[1]))) {
+                            appendMessage("文件 \"${it[1]}\" 非法。")
+                        }
+                    }
+                    "enable" -> {
+                        if (plugins.containsKey(it[1].toInt())) {
+                            plugins[it[1].toInt()]!!.onEnable()
+                        } else {
+                            appendMessage("Id " + it[1] + " 不存在。")
+                        }
+                    }
+                    "disable" -> {
+                        if (plugins.containsKey(it[1].toInt())) {
+                            plugins[it[1].toInt()]!!.onDisable()
+                        } else {
+                            appendMessage("Id " + it[1] + " 不存在。")
+                        }
+                    }
+                    else -> return@onCommand false
+                }
+                return@onCommand true
+            }
         }
     }
 }
