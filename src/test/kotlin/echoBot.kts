@@ -22,9 +22,22 @@
  *
  */
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.features.BrowserUserAgent
+import io.ktor.client.request.get
+import kotlinx.coroutines.launch
 import net.mamoe.mirai.event.events.BotOnlineEvent
 import net.mamoe.mirai.event.subscribeAlways
+import net.mamoe.mirai.message.GroupMessageEvent
+import net.mamoe.mirai.message.data.PlainText
+import org.itxtech.miraikts.plugin.KtsPlugin
 import org.itxtech.miraikts.plugin.miraiPlugin
+
+// 扩展函数写在 miraiPlugin 前面
+fun KtsPlugin.doSomething() {
+    println("数据文件夹 $dataDir")
+}
 
 miraiPlugin {
     info {
@@ -43,12 +56,23 @@ miraiPlugin {
                 return@onCommand true
             }
         }
+        launch {
+            val client = HttpClient(CIO) {
+                BrowserUserAgent()
+            }
+            val r = client.get<String>("https://im.qq.com")
+            logger.info("QQ主页长：${r.length}")
+        }
     }
 
     enable {
-        logger.info("KtsPlugin 已启用！文件夹：" + dataDir.absolutePath)
+        logger.info("KtsPlugin 已启用！")
+        doSomething()
         subscribeAlways<BotOnlineEvent> {
             logger.info("Bot已上线！$this")
+        }
+        subscribeAlways<GroupMessageEvent> {
+            group.sendMessage(PlainText("MiraiKts收到消息：") + message)
         }
     }
 

@@ -1,14 +1,21 @@
 # Mirai Kts
 
-**强大的 `Mirai Kotlin Script` 插件运行时**
+**强大的 `Mirai Kotlin Script` 插件加载器**
 
-使用`Kotlin Script`编写 [Mirai](https://github.com/mamoe/mirai) 插件，支持与所有`Mirai API`直接交互，现仅支持`OpenJDK`环境。
+使用`Kotlin Script`编写 [Mirai](https://github.com/mamoe/mirai) 插件，支持与所有`Mirai API`直接交互，现仅支持`OpenJDK 8+`环境。
 
 ## 使用须知
 
 **所有基于`Mirai Kts`的插件必须遵循`AGPL-v3`协议开放源代码，详见 [协议文本](LICENSE) 。**
 
 **API可能随时变动，请保持更新！**
+
+## 特性
+
+* 极简语法，完整Kotlin语法支持
+* 高效率执行（缺点是冷启动较慢）
+* 字节码缓存机制，减少编译次数
+* 施主别着急，更多功能即将加入。先看看 [例子](src/test/kotlin) 吧。
 
 ## 开源协议
 
