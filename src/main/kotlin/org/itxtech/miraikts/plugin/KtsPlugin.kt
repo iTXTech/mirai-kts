@@ -33,6 +33,7 @@ import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.MiraiLogger
 import net.mamoe.mirai.utils.SimpleLogger
 import org.itxtech.miraikts.MiraiKts
+import org.itxtech.miraikts.MiraiKtsCacheMetadata
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 
@@ -82,6 +83,7 @@ class KtsPlugin(
     lateinit var file: File
     var id: Int = 0
     var enabled = false
+    var cacheMeta: MiraiKtsCacheMetadata? = null
     val dataDir: File by lazy { manager.getPluginDataDir(info.name) }
 
     val logger: MiraiLogger by lazy {

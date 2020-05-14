@@ -89,13 +89,15 @@ open class PluginManager {
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
+                var metadata: MiraiKtsCacheMetadata? = null
                 val compiled: ReplCompileResult.CompiledClasses = if (compile) {
                     (engine.compile(ktsFile.readText()) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
-                        .compiledData.apply {
-                        save(cacheFile)
-                    }
+                        .compiledData
+                        .apply {
+                            save(cacheFile, ktsFile)
+                        }
                 } else {
-                    cacheFile.readAsCache()
+                    cacheFile.readMkc().apply { metadata = meta }.classes
                 }
 
                 val plugin = engine.eval(compiled) as KtsPlugin
@@ -104,6 +106,8 @@ open class PluginManager {
                     (if (compile) "编译 " else "缓存 ") +
                             "插件 \"${ktsFile.name}\" 加载耗时 " + (currentTimeMillis - start) + "ms"
                 )
+
+                plugin.cacheMeta = metadata
 
                 plugin.manager = this@PluginManager
                 plugin.id = id

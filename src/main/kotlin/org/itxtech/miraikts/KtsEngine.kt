@@ -48,6 +48,9 @@ import javax.script.ScriptEngineFactory
 import javax.script.ScriptException
 import kotlin.reflect.KClass
 
+// 后续版本号为 2531
+const val HEADER = "MKCv531"
+
 object KtsEngineFactory : KotlinJsr223JvmScriptEngineFactoryBase() {
     override fun getScriptEngine(): KtsEngine {
         val jars = arrayListOf<File>()
@@ -160,6 +163,17 @@ class KtsEngine(
     }
 }
 
+data class MiraiKtsCache(
+    val meta: MiraiKtsCacheMetadata,
+    val classes: ReplCompileResult.CompiledClasses
+)
+
+data class MiraiKtsCacheMetadata(
+    val header: String,
+    val origin: String,
+    val file: File
+)
+
 fun File.findCache(dir: File): File {
     val md5 = BigInteger(
         1, MessageDigest.getInstance("MD5").digest(readBytes())
@@ -167,19 +181,37 @@ fun File.findCache(dir: File): File {
     return File(dir.absolutePath + File.separatorChar + md5 + ".mkc")
 }
 
-fun File.readAsCache(): ReplCompileResult.CompiledClasses {
+fun File.readMkc(): MiraiKtsCache {
     val bi = FileInputStream(this)
     val si = ObjectInputStream(bi)
-    return (si.readObject() as ReplCompileResult.CompiledClasses).apply {
-        si.close()
-        bi.close()
-    }
+    return MiraiKtsCache(
+        MiraiKtsCacheMetadata(
+            si.readString(),
+            si.readString(),
+            this
+        ),
+        (si.readObject() as ReplCompileResult.CompiledClasses).apply {
+            si.close()
+            bi.close()
+        }
+    )
 }
 
-fun ReplCompileResult.CompiledClasses.save(file: File) {
-    val bo = FileOutputStream(file)
+fun ReplCompileResult.CompiledClasses.save(target: File, origin: File, header: String = HEADER) {
+    val bo = FileOutputStream(target)
     val so = ObjectOutputStream(bo)
+    so.writeString(header)
+    so.writeString(origin.absolutePath)
     so.writeObject(this)
     so.close()
     bo.close()
+}
+
+fun ObjectInputStream.readString(): String {
+    return String(readNBytes(readShort().toInt()))
+}
+
+fun ObjectOutputStream.writeString(str: String) {
+    writeShort(str.length)
+    writeBytes(str)
 }
