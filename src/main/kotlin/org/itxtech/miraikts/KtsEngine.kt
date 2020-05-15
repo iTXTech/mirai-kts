@@ -169,16 +169,21 @@ data class MiraiKtsCache(
 )
 
 data class MiraiKtsCacheMetadata(
-    val header: String,
-    val origin: String,
+    val source: Boolean,
+    val header: String? = null,
+    val origin: String? = null,
+    val checksum: String,
     val file: File
-)
+) {
+    fun verifyHeader(h: String = HEADER) = header == h
+}
 
-fun File.findCache(dir: File): File {
-    val md5 = BigInteger(
-        1, MessageDigest.getInstance("MD5").digest(readBytes())
-    ).toString(16).padStart(32, '0')
-    return File(dir.absolutePath + File.separatorChar + md5 + ".mkc")
+fun File.checksum(): String = BigInteger(
+    1, MessageDigest.getInstance("MD5").digest(readBytes())
+).toString(16).padStart(32, '0')
+
+fun File.findCache(dir: File, checksum: String = checksum()): File {
+    return File(dir.absolutePath + File.separatorChar + checksum + ".mkc")
 }
 
 fun File.readMkc(): MiraiKtsCache {
@@ -186,6 +191,8 @@ fun File.readMkc(): MiraiKtsCache {
     val si = ObjectInputStream(bi)
     return MiraiKtsCache(
         MiraiKtsCacheMetadata(
+            false,
+            si.readString(),
             si.readString(),
             si.readString(),
             this
@@ -197,14 +204,25 @@ fun File.readMkc(): MiraiKtsCache {
     )
 }
 
-fun ReplCompileResult.CompiledClasses.save(target: File, origin: File, header: String = HEADER) {
+fun ReplCompileResult.CompiledClasses.save(
+    target: File, origin: File,
+    checksum: String, header: String = HEADER
+): MiraiKtsCacheMetadata {
     val bo = FileOutputStream(target)
     val so = ObjectOutputStream(bo)
     so.writeString(header)
     so.writeString(origin.absolutePath)
+    so.writeString(checksum)
     so.writeObject(this)
     so.close()
     bo.close()
+    return MiraiKtsCacheMetadata(
+        true,
+        header,
+        origin.absolutePath,
+        checksum,
+        target
+    )
 }
 
 fun ObjectInputStream.readString(): String {

@@ -81,9 +81,9 @@ class KtsPlugin(
 
     lateinit var manager: PluginManager
     lateinit var file: File
+    lateinit var cacheMeta: MiraiKtsCacheMetadata
     var id: Int = 0
     var enabled = false
-    var cacheMeta: MiraiKtsCacheMetadata? = null
     val dataDir: File by lazy { manager.getPluginDataDir(info.name) }
 
     val logger: MiraiLogger by lazy {

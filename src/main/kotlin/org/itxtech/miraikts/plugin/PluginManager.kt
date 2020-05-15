@@ -39,20 +39,16 @@ open class PluginManager {
     protected val plDir: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "plugins").also { it.mkdirs() } }
     protected val plData: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "data").also { it.mkdirs() } }
     protected val cache: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "cache").also { it.mkdirs() } }
-    protected val context = newFixedThreadPoolContext(Runtime.getRuntime().availableProcessors(), "MiraiKts")
+    protected val context = newSingleThreadContext("MiraiKts")
 
     init {
         setIdeaIoUseFallback()
-    }
-
-    private fun launch(b: suspend CoroutineScope.() -> Unit): Job {
-        return MiraiKts.launch(context) {
-            if (Thread.currentThread().contextClassLoader != this@PluginManager.javaClass.classLoader) {
-                Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
-            }
-            b.invoke(this)
+        launch {
+            Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
         }
     }
+
+    private fun launch(b: suspend CoroutineScope.() -> Unit): Job = MiraiKts.launch(context, block = b)
 
     open fun getPluginDataDir(name: String): File {
         return File(plData.absolutePath + File.separatorChar + name).apply { mkdirs() }
@@ -60,7 +56,6 @@ open class PluginManager {
 
     protected val pluginId = atomic(0)
     protected val plugins = hashMapOf<Int, KtsPlugin>()
-    protected val loadingJobs = hashMapOf<Int, Job>()
 
     open fun loadPlugins() {
         if (!MiraiKts.dataFolder.isDirectory) {
@@ -73,8 +68,10 @@ open class PluginManager {
     }
 
     open fun loadPlugin(ktsFile: File): Boolean {
-        if (ktsFile.exists() && ktsFile.isFile && ktsFile.absolutePath.endsWith(".kts")) {
-            MiraiKts.logger.info("正在加载 Kts 插件：" + ktsFile.absolutePath)
+        if (ktsFile.exists() && ktsFile.isFile &&
+            (ktsFile.name.endsWith(".kts") || ktsFile.name.endsWith(".mkc"))
+        ) {
+            MiraiKts.logger.info("正在加载 MiraiKtsKts 插件：" + ktsFile.name)
             plugins.values.forEach {
                 if (it.file == ktsFile) {
                     return false
@@ -82,22 +79,44 @@ open class PluginManager {
             }
 
             val id = pluginId.getAndIncrement()
-            loadingJobs[id] = launch {
+            launch {
                 val engine = KtsEngineFactory.scriptEngine
-                val cacheFile = ktsFile.findCache(cache)
+                val checksum = ktsFile.checksum()
+                val cacheFile = if (ktsFile.name.endsWith(".mkc")) {
+                    ktsFile
+                } else {
+                    plugins.values.forEach {
+                        if (it.cacheMeta.checksum == checksum) {
+                            MiraiKts.logger.error("插件 \"${ktsFile.name}\" 与已加载的插件 \"${it.file.name}\" 冲突：相同的插件")
+                            return@launch
+                        }
+                    }
+                    ktsFile.findCache(cache, checksum)
+                }
 
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
-                var metadata: MiraiKtsCacheMetadata? = null
+                val metadata: MiraiKtsCacheMetadata
                 val compiled: ReplCompileResult.CompiledClasses = if (compile) {
                     (engine.compile(ktsFile.readText()) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
                         .compiledData
                         .apply {
-                            save(cacheFile, ktsFile)
+                            metadata = save(cacheFile, ktsFile, checksum)
                         }
                 } else {
-                    cacheFile.readMkc().apply { metadata = meta }.classes
+                    cacheFile.readMkc().apply {
+                        if (meta.checksum != checksum) {
+                            MiraiKts.logger.error("非法的 MiraiKts 缓存文件 \"${cacheFile.name}\"，请删除该文件")
+                            return@launch
+                        }
+                        metadata = meta
+                    }.classes
+                }
+
+                if (!metadata.verifyHeader()) {
+                    MiraiKts.logger.error("非法的 MiraiKts 缓存文件头 \"${metadata.header}\" 位于 \"${cacheFile.name}\"，请删除该文件")
+                    return@launch
                 }
 
                 val plugin = engine.eval(compiled) as KtsPlugin
@@ -108,6 +127,12 @@ open class PluginManager {
                 )
 
                 plugin.cacheMeta = metadata
+                plugins.values.forEach {
+                    if (it.info.name == plugin.info.name || it.cacheMeta.checksum == plugin.cacheMeta.checksum) {
+                        MiraiKts.logger.error("插件 \"${ktsFile.name}\" 与已加载的插件 \"${it.file.name}\" 冲突：相同的插件")
+                        return@launch
+                    }
+                }
 
                 plugin.manager = this@PluginManager
                 plugin.id = id
@@ -122,12 +147,6 @@ open class PluginManager {
     }
 
     open fun enablePlugins() = launch {
-        loadingJobs.forEach { entry ->
-            entry.value.invokeOnCompletion {
-                plugins[entry.key]?.onEnable()
-            }
-        }
-        loadingJobs.clear()
         plugins.values.forEach {
             it.onEnable()
         }
