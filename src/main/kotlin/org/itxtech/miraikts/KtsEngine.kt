@@ -24,6 +24,9 @@
 
 package org.itxtech.miraikts
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UnstableDefault
+import kotlinx.serialization.json.Json
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.common.repl.*
@@ -53,15 +56,8 @@ const val HEADER = "MKCv531"
 
 object KtsEngineFactory : KotlinJsr223JvmScriptEngineFactoryBase() {
     override fun getScriptEngine(): KtsEngine {
-        val jars = arrayListOf<File>()
-        (javaClass.classLoader.parent as URLClassLoader).urLs.forEach {
-            jars.add(File(it.file))
-        }
-        (javaClass.classLoader as URLClassLoader).urLs.forEach {
-            jars.add(File(it.file))
-        }
         return KtsEngine(
-            this, jars,
+            this, Thread.currentThread().contextClassLoader.getClassPath(3),
             KotlinStandardJsr223ScriptTemplate::class.qualifiedName!!,
             { ctx, types ->
                 ScriptArgsWithTypes(
@@ -165,6 +161,7 @@ class KtsEngine(
 
 data class MiraiKtsCache(
     val meta: MiraiKtsCacheMetadata,
+    val info: MktsInfo,
     val classes: ReplCompileResult.CompiledClasses
 )
 
@@ -197,6 +194,7 @@ fun File.readMkc(): MiraiKtsCache {
             si.readString(),
             this
         ),
+        si.readString().readMktsInfo(name, false),
         (si.readObject() as ReplCompileResult.CompiledClasses).apply {
             si.close()
             bi.close()
@@ -205,14 +203,15 @@ fun File.readMkc(): MiraiKtsCache {
 }
 
 fun ReplCompileResult.CompiledClasses.save(
-    target: File, origin: File,
-    checksum: String, header: String = HEADER
+    target: File, origin: File, checksum: String,
+    info: MktsInfo, header: String = HEADER
 ): MiraiKtsCacheMetadata {
     val bo = FileOutputStream(target)
     val so = ObjectOutputStream(bo)
     so.writeString(header)
     so.writeString(origin.absolutePath)
     so.writeString(checksum)
+    so.writeString(info.toString())
     so.writeObject(this)
     so.close()
     bo.close()
@@ -232,4 +231,54 @@ fun ObjectInputStream.readString(): String {
 fun ObjectOutputStream.writeString(str: String) {
     writeShort(str.length)
     writeBytes(str)
+}
+
+@Serializable
+data class MktsInfo(
+    val namespace: String = "public", // 默认外部库文件夹
+    val deps: ArrayList<String> = ArrayList()
+) {
+    @OptIn(UnstableDefault::class)
+    override fun toString(): String {
+        return Json.stringify(serializer(), this)
+    }
+}
+
+@OptIn(UnstableDefault::class)
+fun String.readMktsInfo(filename: String, head: Boolean = true): MktsInfo {
+    val i = if (head) {
+        substringAfter("/*mkts", "")
+            .substringBefore("mkts*/", "").trim()
+    } else {
+        this
+    }
+    if (i == "") {
+        return MktsInfo()
+    }
+    return try {
+        Json {
+            isLenient = true
+            ignoreUnknownKeys = true
+            serializeSpecialFloatingPointValues = true
+            useArrayPolymorphism = true
+        }.parse(MktsInfo.serializer(), i)
+    } catch (e: Exception) {
+        MiraiKts.logger.error("读取位于 \"$filename\" 中的 MktsInfo 时出错，请检查该文件")
+        MktsInfo()
+    }
+}
+
+fun ClassLoader.getClassPath(limit: Int, list: ArrayList<File> = ArrayList()): ArrayList<File> {
+    if (limit <= 0) {
+        return list
+    }
+    if (this is URLClassLoader) {
+        urLs.forEach {
+            list.add(File(it.file))
+        }
+    }
+    if (parent != null) {
+        return parent.getClassPath(limit - 1, list)
+    }
+    return list
 }

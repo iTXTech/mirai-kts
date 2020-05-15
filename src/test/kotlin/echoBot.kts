@@ -36,7 +36,7 @@ import org.itxtech.miraikts.plugin.miraiPlugin
 
 // 扩展函数写在 miraiPlugin 前面
 fun KtsPlugin.doSomething() {
-    println("数据文件夹 $dataDir")
+    logger.info("数据文件夹 $dataDir")
 }
 
 miraiPlugin {

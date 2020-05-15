@@ -33,29 +33,46 @@ import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
 import org.jetbrains.kotlin.cli.common.repl.KotlinJsr223JvmScriptEngineBase
 import org.jetbrains.kotlin.cli.common.repl.ReplCompileResult
 import java.io.File
+import java.net.URL
+import java.net.URLClassLoader
 
 @OptIn(ObsoleteCoroutinesApi::class)
 open class PluginManager {
     protected val plDir: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "plugins").also { it.mkdirs() } }
     protected val plData: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "data").also { it.mkdirs() } }
+    protected val plLib: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "lib").also { it.mkdirs() } }
     protected val cache: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "cache").also { it.mkdirs() } }
     protected val context = newSingleThreadContext("MiraiKts")
 
     init {
         setIdeaIoUseFallback()
-        launch {
-            Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
-            MiraiKts.logger.debug("开始加载 MiraiKts 编译器")
-            val start = currentTimeMillis
-            KtsEngineFactory.scriptEngine.eval("")
-            MiraiKts.logger.debug("MiraiKts 编译器加载耗时 " + (currentTimeMillis - start) + "ms")
-        }
     }
 
     private fun launch(b: suspend CoroutineScope.() -> Unit): Job = MiraiKts.launch(context, block = b)
 
-    open fun getPluginDataDir(name: String): File {
-        return File(plData.absolutePath + File.separatorChar + name).apply { mkdirs() }
+    open fun getPluginDataDir(name: String) =
+        File(plData.absolutePath + File.separatorChar + name).apply { mkdirs() }
+
+    open fun getLibDir(name: String) =
+        File(plLib.absolutePath + File.separatorChar + name).apply { mkdirs() }
+
+    open fun getClassLoader(
+        parent: ClassLoader,
+        namespace: String,
+        libs: ArrayList<String>,
+        filename: String
+    ): URLClassLoader {
+        val base = getLibDir(namespace)
+        val urls = arrayListOf<URL>()
+        libs.forEach {
+            val jar = File(base.absolutePath + File.separatorChar + it)
+            if (jar.exists()) {
+                urls.add(jar.toURI().toURL())
+            } else {
+                MiraiKts.logger.error("无法找到 \"$filename\" 所需的 \"${jar.absolutePath}\"")
+            }
+        }
+        return URLClassLoader(urls.toTypedArray(), parent)
     }
 
     protected val pluginId = atomic(0)
@@ -84,7 +101,6 @@ open class PluginManager {
 
             val id = pluginId.getAndIncrement()
             launch {
-                val engine = KtsEngineFactory.scriptEngine
                 val checksum = ktsFile.checksum()
                 val cacheFile = if (ktsFile.name.endsWith(".mkc")) {
                     ktsFile
@@ -101,12 +117,27 @@ open class PluginManager {
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
+                val engine: KtsEngine
                 val metadata: MiraiKtsCacheMetadata
+                val mktsInfo: MktsInfo
                 val compiled: ReplCompileResult.CompiledClasses = if (compile) {
-                    (engine.compile(ktsFile.readText()) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
+                    val script = ktsFile.readText().apply {
+                        mktsInfo = readMktsInfo(ktsFile.name)
+                    }
+
+                    Thread.currentThread().contextClassLoader =
+                        getClassLoader(
+                            this@PluginManager.javaClass.classLoader,
+                            mktsInfo.namespace,
+                            mktsInfo.deps,
+                            ktsFile.name
+                        )
+                    engine = KtsEngineFactory.scriptEngine
+
+                    (engine.compile(script) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
                         .compiledData
                         .apply {
-                            metadata = save(cacheFile, ktsFile, checksum)
+                            metadata = save(cacheFile, ktsFile, checksum, mktsInfo)
                         }
                 } else {
                     cacheFile.readMkc().apply {
@@ -115,6 +146,16 @@ open class PluginManager {
                             return@launch
                         }
                         metadata = meta
+                        mktsInfo = info
+
+                        Thread.currentThread().contextClassLoader =
+                            getClassLoader(
+                                this@PluginManager.javaClass.classLoader,
+                                mktsInfo.namespace,
+                                mktsInfo.deps,
+                                cacheFile.name
+                            )
+                        engine = KtsEngineFactory.scriptEngine
                     }.classes
                 }
 
@@ -144,6 +185,9 @@ open class PluginManager {
                 plugins[id] = plugin
 
                 plugin.onLoad()
+
+                // 重新使用默认 ClassLoader 防止引用无法卸载
+                Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
             }
             return true
         }
