@@ -82,7 +82,7 @@ class KtsEngine(
     private val scriptArgsTypes: Array<out KClass<out Any>>?
 ) : KotlinJsr223JvmScriptEngineBase(factory), KotlinJsr223JvmInvocableScriptEngine {
 
-    override val replCompiler: ReplCompiler by lazy {
+    public override val replCompiler: ReplCompiler by lazy {
         GenericReplCompiler(
             makeScriptDefinition(templateClasspath, templateClassName),
             makeCompilerConfiguration(),
@@ -90,7 +90,7 @@ class KtsEngine(
         )
     }
 
-    private val localEvaluator by lazy {
+    val localEvaluator by lazy {
         GenericReplCompilingEvaluator(
             replCompiler,
             templateClasspath,

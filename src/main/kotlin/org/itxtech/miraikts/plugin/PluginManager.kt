@@ -45,6 +45,10 @@ open class PluginManager {
         setIdeaIoUseFallback()
         launch {
             Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
+            MiraiKts.logger.debug("开始加载 MiraiKts 编译器")
+            val start = currentTimeMillis
+            KtsEngineFactory.scriptEngine.eval("")
+            MiraiKts.logger.debug("MiraiKts 编译器加载耗时 " + (currentTimeMillis - start) + "ms")
         }
     }
 
@@ -71,7 +75,7 @@ open class PluginManager {
         if (ktsFile.exists() && ktsFile.isFile &&
             (ktsFile.name.endsWith(".kts") || ktsFile.name.endsWith(".mkc"))
         ) {
-            MiraiKts.logger.info("正在加载 MiraiKtsKts 插件：" + ktsFile.name)
+            MiraiKts.logger.info("正在加载 MiraiKts 插件：" + ktsFile.name)
             plugins.values.forEach {
                 if (it.file == ktsFile) {
                     return false
