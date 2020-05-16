@@ -42,7 +42,10 @@ open class PluginManager {
     protected val plData: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "data").also { it.mkdirs() } }
     protected val plLib: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "lib").also { it.mkdirs() } }
     protected val cache: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "cache").also { it.mkdirs() } }
+
     protected val context = newSingleThreadContext("MiraiKts")
+    protected val pluginId = atomic(0)
+    protected val plugins = hashMapOf<Int, KtsPlugin>()
 
     init {
         setIdeaIoUseFallback()
@@ -56,14 +59,7 @@ open class PluginManager {
     open fun getLibDir(name: String) =
         File(plLib.absolutePath + File.separatorChar + name).apply { mkdirs() }
 
-    open fun getClassLoader(
-        parent: ClassLoader
-    ): URLClassLoader {
-        return URLClassLoader(ArrayList<URL>().toTypedArray(), parent)
-    }
-
-    protected val pluginId = atomic(0)
-    protected val plugins = hashMapOf<Int, KtsPlugin>()
+    open fun getClassLoader(parent: ClassLoader) = URLClassLoader(ArrayList<URL>().toTypedArray(), parent)
 
     open fun loadPlugins() {
         if (!MiraiKts.dataFolder.isDirectory) {
@@ -104,7 +100,7 @@ open class PluginManager {
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
-                val engine = KtsEngineFactory.getScriptEngine(
+                val engine = getScriptEngine(
                     this@PluginManager, ktsFile,
                     getClassLoader(this@PluginManager.javaClass.classLoader)
                 )
@@ -177,7 +173,7 @@ open class PluginManager {
         }
     }
 
-    fun getCommonPluginInfo(p: KtsPlugin, sender: CommandSender) {
+    private fun getCommonPluginInfo(p: KtsPlugin, sender: CommandSender) {
         sender.appendMessage(
             "Id：" + p.id + " 文件：" + p.file.name + " 名称：" + p.info.name + " 状态：" +
                     (if (p.enabled) "启用" else "停用") + " 版本：" + p.info.version +

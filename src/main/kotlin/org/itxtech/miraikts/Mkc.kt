@@ -48,9 +48,8 @@ fun File.checksum(): String = BigInteger(
     1, MessageDigest.getInstance("MD5").digest(readBytes())
 ).toString(16).padStart(32, '0')
 
-fun File.findCache(dir: File, checksum: String = checksum()): File {
-    return File(dir.absolutePath + File.separatorChar + checksum + ".mkc")
-}
+fun File.findCache(dir: File, checksum: String = checksum()) =
+    File(dir.absolutePath + File.separatorChar + checksum + ".mkc")
 
 fun File.readMkc(): MiraiKtsCache {
     val bi = FileInputStream(this)
@@ -93,9 +92,7 @@ fun ReplCompileResult.CompiledClasses.save(
     )
 }
 
-fun ObjectInputStream.readString(): String {
-    return String(readNBytes(readShort().toInt()))
-}
+fun ObjectInputStream.readString() = String(readNBytes(readShort().toInt()))
 
 fun ObjectOutputStream.writeString(str: String) {
     writeShort(str.length)

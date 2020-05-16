@@ -54,15 +54,12 @@ const val HEADER = "MKCv531"
 const val ENV_MANAGER = "manager"
 const val ENV_FILENAME = "filename"
 
-object KtsEngineFactory {
-    fun getScriptEngine(manager: PluginManager, file: File, classLoader: ClassLoader): KtsEngine {
-        return KtsEngine(
-            manager, file,
-            classLoader,
-            classLoader.getClasspath(3) // core, console, MiraiKts
-        )
-    }
-}
+fun getScriptEngine(manager: PluginManager, file: File, classLoader: ClassLoader) = KtsEngine(
+    manager,
+    file,
+    classLoader,
+    classLoader.getClassPath(3) // core, console, MiraiKts
+)
 
 class KtsEngine(
     private val manager: PluginManager,
@@ -105,25 +102,22 @@ class KtsEngine(
         }
     }
 
-    private fun nextCodeLine(code: String) = state.let { ReplCodeLine(it.getNextLineNo(), it.currentGeneration, code) }
+    private fun nextCodeLine(code: String) = ReplCodeLine(state.getNextLineNo(), state.currentGeneration, code)
 
-    fun compile(script: String): ReplCompileResult.CompiledClasses {
-        return when (val result = replCompiler.compile(state, nextCodeLine(script))) {
+    fun compile(script: String): ReplCompileResult.CompiledClasses =
+        when (val result = replCompiler.compile(state, nextCodeLine(script))) {
             is ReplCompileResult.Error -> throw Exception("Error: ${result.message}")
             is ReplCompileResult.Incomplete -> throw Exception("Error: incomplete code $result")
             is ReplCompileResult.CompiledClasses -> result
         }
-    }
 
-    private fun makeScriptDefinition(): KotlinScriptDefinition {
-        return KotlinScriptDefinitionFromAnnotatedTemplate(
-            MktsResolverAnno::class,
-            mapOf(
-                Pair(ENV_MANAGER, manager),
-                Pair(ENV_FILENAME, file)
-            )
+    private fun makeScriptDefinition(): KotlinScriptDefinition = KotlinScriptDefinitionFromAnnotatedTemplate(
+        MktsResolverAnno::class,
+        mapOf(
+            Pair(ENV_MANAGER, manager),
+            Pair(ENV_FILENAME, file)
         )
-    }
+    )
 
     private fun makeCompilerConfiguration() = CompilerConfiguration().apply {
         addJvmSdkRoots(PathUtil.getJdkClassesRootsFromCurrentJre())
@@ -138,7 +132,7 @@ class KtsEngine(
     }
 }
 
-fun ClassLoader.getClasspath(limit: Int, list: ArrayList<File> = ArrayList()): ArrayList<File> {
+fun ClassLoader.getClassPath(limit: Int, list: ArrayList<File> = ArrayList()): ArrayList<File> {
     if (limit <= 0) {
         return list
     }
@@ -148,7 +142,7 @@ fun ClassLoader.getClasspath(limit: Int, list: ArrayList<File> = ArrayList()): A
         }
     }
     if (parent != null) {
-        return parent.getClasspath(limit - 1, list)
+        return parent.getClassPath(limit - 1, list)
     }
     return list
 }

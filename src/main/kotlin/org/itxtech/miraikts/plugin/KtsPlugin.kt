@@ -27,7 +27,6 @@ package org.itxtech.miraikts.plugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import net.mamoe.mirai.console.MiraiConsole
-import net.mamoe.mirai.console.command.Command
 import net.mamoe.mirai.console.command.CommandBuilder
 import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.MiraiLogger
@@ -64,9 +63,7 @@ class KtsPluginBuilder {
         disable = block
     }
 
-    fun build(): KtsPlugin {
-        return KtsPlugin(info, load, enable, disable)
-    }
+    fun build() = KtsPlugin(info, load, enable, disable)
 }
 
 open class KtsPlugin(
@@ -94,13 +91,9 @@ open class KtsPlugin(
         }
     }
 
-    fun registerCommand(builder: CommandBuilder.() -> Unit): Command {
-        return MiraiKts.registerCommand(builder)
-    }
+    fun registerCommand(builder: CommandBuilder.() -> Unit) = MiraiKts.registerCommand(builder)
 
-    open fun onLoad() {
-        load?.invoke(this)
-    }
+    open fun onLoad() = load?.invoke(this)
 
     open fun onEnable() {
         if (!enabled) {
