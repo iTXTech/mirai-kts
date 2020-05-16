@@ -22,12 +22,18 @@
  *
  */
 
-/*mkts
-{"namespace":"okhttpexample","deps":["okhttp.jar","okio.jar"]}
-mkts*/
+// 指定依赖 JAR 的命名空间，默认为 public
+@file:Namespace("okhttpexample")
+// 指定依赖的 JAR 文件名
+@file:Jar("okhttp.jar", "okio.jar")
+// 或者分开编写
+// @file:Jar("okhttp.jar")
+// @file:Jar("okio.jar")
 
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.itxtech.miraikts.Jar
+import org.itxtech.miraikts.Namespace
 import org.itxtech.miraikts.plugin.miraiPlugin
 import java.util.concurrent.TimeUnit
 

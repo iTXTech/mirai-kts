@@ -24,9 +24,7 @@
 
 package org.itxtech.miraikts
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.UnstableDefault
-import kotlinx.serialization.json.Json
+import org.itxtech.miraikts.plugin.PluginManager
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.common.repl.*
@@ -34,116 +32,97 @@ import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.config.addJvmSdkRoots
 import org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar
 import org.jetbrains.kotlin.config.*
-import org.jetbrains.kotlin.script.jsr223.KotlinStandardJsr223ScriptTemplate
 import org.jetbrains.kotlin.scripting.compiler.plugin.ScriptingCompilerConfigurationComponentRegistrar
 import org.jetbrains.kotlin.scripting.compiler.plugin.repl.GenericReplCompiler
 import org.jetbrains.kotlin.scripting.definitions.KotlinScriptDefinition
 import org.jetbrains.kotlin.scripting.resolve.KotlinScriptDefinitionFromAnnotatedTemplate
 import org.jetbrains.kotlin.utils.PathUtil
-import java.io.*
-import java.math.BigInteger
+import java.io.File
 import java.net.URLClassLoader
-import java.security.MessageDigest
 import java.util.concurrent.locks.ReentrantReadWriteLock
-import javax.script.Bindings
-import javax.script.ScriptContext
-import javax.script.ScriptEngineFactory
-import javax.script.ScriptException
-import kotlin.reflect.KClass
+import kotlin.script.dependencies.Environment
+import kotlin.script.dependencies.ScriptContents
+import kotlin.script.experimental.dependencies.DependenciesResolver
+import kotlin.script.experimental.dependencies.ScriptDependencies
+import kotlin.script.experimental.dependencies.asSuccess
+import kotlin.script.templates.AcceptedAnnotations
+import kotlin.script.templates.ScriptTemplateDefinition
 
 // 后续版本号为 2531
 const val HEADER = "MKCv531"
 
-object KtsEngineFactory : KotlinJsr223JvmScriptEngineFactoryBase() {
-    override fun getScriptEngine(): KtsEngine {
+const val ENV_MANAGER = "manager"
+const val ENV_FILENAME = "filename"
+
+object KtsEngineFactory {
+    fun getScriptEngine(manager: PluginManager, file: File, classLoader: ClassLoader): KtsEngine {
         return KtsEngine(
-            this, Thread.currentThread().contextClassLoader.getClassPath(3),
-            KotlinStandardJsr223ScriptTemplate::class.qualifiedName!!,
-            { ctx, types ->
-                ScriptArgsWithTypes(
-                    arrayOf(ctx.getBindings(ScriptContext.ENGINE_SCOPE)),
-                    types ?: emptyArray()
-                )
-            },
-            arrayOf(Bindings::class)
+            manager, file,
+            classLoader,
+            classLoader.getClasspath(3) // core, console, MiraiKts
         )
     }
 }
 
 class KtsEngine(
-    factory: ScriptEngineFactory,
-    private val templateClasspath: List<File>,
-    templateClassName: String,
-    val getScriptArgs: (ScriptContext, Array<out KClass<out Any>>?) -> ScriptArgsWithTypes?,
-    private val scriptArgsTypes: Array<out KClass<out Any>>?
-) : KotlinJsr223JvmScriptEngineBase(factory), KotlinJsr223JvmInvocableScriptEngine {
-
-    public override val replCompiler: ReplCompiler by lazy {
+    private val manager: PluginManager,
+    private val file: File,
+    private val loader: ClassLoader,
+    private val templateClasspath: List<File>
+) {
+    private val replCompiler: ReplCompiler by lazy {
         GenericReplCompiler(
-            makeScriptDefinition(templateClasspath, templateClassName),
+            makeScriptDefinition(),
             makeCompilerConfiguration(),
             PrintingMessageCollector(System.out, MessageRenderer.WITHOUT_PATHS, false)
         )
     }
 
-    val localEvaluator by lazy {
+    private val localEvaluator by lazy {
         GenericReplCompilingEvaluator(
             replCompiler,
             templateClasspath,
-            Thread.currentThread().contextClassLoader,
-            getScriptArgs(getContext(), scriptArgsTypes)
+            loader
         )
     }
 
-    override val replEvaluator: ReplFullEvaluator get() = localEvaluator
-
-    override val state: IReplStageState<*> get() = getCurrentState(getContext())
+    private val state = localEvaluator.createState(ReentrantReadWriteLock())
 
     fun eval(classes: ReplCompileResult.CompiledClasses): Any? {
-        val state = getCurrentState(context)
-        return asJsr223EvalResult {
-            replEvaluator.eval(state, classes, overrideScriptArgs(context), getInvokeWrapper(context))
-        }
-    }
-
-    private fun asJsr223EvalResult(body: () -> ReplEvalResult): Any? {
         val result = try {
-            body()
+            localEvaluator.eval(state, classes, null, null)
         } catch (e: Exception) {
-            throw ScriptException(e)
+            MiraiKts.logger.error(e)
         }
 
         return when (result) {
             is ReplEvalResult.ValueResult -> result.value
             is ReplEvalResult.UnitResult -> null
-            is ReplEvalResult.Error ->
-                when {
-                    result is ReplEvalResult.Error.Runtime && result.cause != null ->
-                        throw ScriptException(result.cause)
-                    result is ReplEvalResult.Error.CompileTime && result.location != null ->
-                        throw ScriptException(
-                            result.message,
-                            result.location!!.path,
-                            result.location!!.line,
-                            result.location!!.column
-                        )
-                    else -> throw ScriptException(result.message)
-                }
-            is ReplEvalResult.Incomplete -> throw ScriptException("Error: incomplete code. $result")
-            is ReplEvalResult.HistoryMismatch -> throw ScriptException("Repl history mismatch at line: ${result.lineNo}")
+            is ReplEvalResult.Error -> throw Exception("Error: $result")
+            is ReplEvalResult.Incomplete -> throw Exception("Error: incomplete code. $result")
+            is ReplEvalResult.HistoryMismatch -> throw Exception("Repl history mismatch at line: ${result.lineNo}")
+            else -> null
         }
     }
 
-    override fun createState(lock: ReentrantReadWriteLock): IReplStageState<*> = replEvaluator.createState(lock)
+    private fun nextCodeLine(code: String) = state.let { ReplCodeLine(it.getNextLineNo(), it.currentGeneration, code) }
 
-    override fun overrideScriptArgs(context: ScriptContext): ScriptArgsWithTypes? =
-        getScriptArgs(context, scriptArgsTypes)
+    fun compile(script: String): ReplCompileResult.CompiledClasses {
+        return when (val result = replCompiler.compile(state, nextCodeLine(script))) {
+            is ReplCompileResult.Error -> throw Exception("Error: ${result.message}")
+            is ReplCompileResult.Incomplete -> throw Exception("Error: incomplete code $result")
+            is ReplCompileResult.CompiledClasses -> result
+        }
+    }
 
-    private fun makeScriptDefinition(templateClasspath: List<File>, templateClassName: String): KotlinScriptDefinition {
-        val classloader =
-            URLClassLoader(templateClasspath.map { it.toURI().toURL() }.toTypedArray(), this.javaClass.classLoader)
-        val cls = classloader.loadClass(templateClassName)
-        return KotlinScriptDefinitionFromAnnotatedTemplate(cls.kotlin, emptyMap())
+    private fun makeScriptDefinition(): KotlinScriptDefinition {
+        return KotlinScriptDefinitionFromAnnotatedTemplate(
+            MktsResolverAnno::class,
+            mapOf(
+                Pair(ENV_MANAGER, manager),
+                Pair(ENV_FILENAME, file)
+            )
+        )
     }
 
     private fun makeCompilerConfiguration() = CompilerConfiguration().apply {
@@ -159,116 +138,7 @@ class KtsEngine(
     }
 }
 
-data class MiraiKtsCache(
-    val meta: MiraiKtsCacheMetadata,
-    val info: MktsInfo,
-    val classes: ReplCompileResult.CompiledClasses
-)
-
-data class MiraiKtsCacheMetadata(
-    val source: Boolean,
-    val header: String? = null,
-    val origin: String? = null,
-    val checksum: String,
-    val file: File
-) {
-    fun verifyHeader(h: String = HEADER) = header == h
-}
-
-fun File.checksum(): String = BigInteger(
-    1, MessageDigest.getInstance("MD5").digest(readBytes())
-).toString(16).padStart(32, '0')
-
-fun File.findCache(dir: File, checksum: String = checksum()): File {
-    return File(dir.absolutePath + File.separatorChar + checksum + ".mkc")
-}
-
-fun File.readMkc(): MiraiKtsCache {
-    val bi = FileInputStream(this)
-    val si = ObjectInputStream(bi)
-    return MiraiKtsCache(
-        MiraiKtsCacheMetadata(
-            false,
-            si.readString(),
-            si.readString(),
-            si.readString(),
-            this
-        ),
-        si.readString().readMktsInfo(name, false),
-        (si.readObject() as ReplCompileResult.CompiledClasses).apply {
-            si.close()
-            bi.close()
-        }
-    )
-}
-
-fun ReplCompileResult.CompiledClasses.save(
-    target: File, origin: File, checksum: String,
-    info: MktsInfo, header: String = HEADER
-): MiraiKtsCacheMetadata {
-    val bo = FileOutputStream(target)
-    val so = ObjectOutputStream(bo)
-    so.writeString(header)
-    so.writeString(origin.absolutePath)
-    so.writeString(checksum)
-    so.writeString(info.toString())
-    so.writeObject(this)
-    so.close()
-    bo.close()
-    return MiraiKtsCacheMetadata(
-        true,
-        header,
-        origin.absolutePath,
-        checksum,
-        target
-    )
-}
-
-fun ObjectInputStream.readString(): String {
-    return String(readNBytes(readShort().toInt()))
-}
-
-fun ObjectOutputStream.writeString(str: String) {
-    writeShort(str.length)
-    writeBytes(str)
-}
-
-@Serializable
-data class MktsInfo(
-    val namespace: String = "public", // 默认外部库文件夹
-    val deps: ArrayList<String> = ArrayList()
-) {
-    @OptIn(UnstableDefault::class)
-    override fun toString(): String {
-        return Json.stringify(serializer(), this)
-    }
-}
-
-@OptIn(UnstableDefault::class)
-fun String.readMktsInfo(filename: String, head: Boolean = true): MktsInfo {
-    val i = if (head) {
-        substringAfter("/*mkts", "")
-            .substringBefore("mkts*/", "").trim()
-    } else {
-        this
-    }
-    if (i == "") {
-        return MktsInfo()
-    }
-    return try {
-        Json {
-            isLenient = true
-            ignoreUnknownKeys = true
-            serializeSpecialFloatingPointValues = true
-            useArrayPolymorphism = true
-        }.parse(MktsInfo.serializer(), i)
-    } catch (e: Exception) {
-        MiraiKts.logger.error("读取位于 \"$filename\" 中的 MktsInfo 时出错，请检查该文件")
-        MktsInfo()
-    }
-}
-
-fun ClassLoader.getClassPath(limit: Int, list: ArrayList<File> = ArrayList()): ArrayList<File> {
+fun ClassLoader.getClasspath(limit: Int, list: ArrayList<File> = ArrayList()): ArrayList<File> {
     if (limit <= 0) {
         return list
     }
@@ -278,7 +148,52 @@ fun ClassLoader.getClassPath(limit: Int, list: ArrayList<File> = ArrayList()): A
         }
     }
     if (parent != null) {
-        return parent.getClassPath(limit - 1, list)
+        return parent.getClasspath(limit - 1, list)
     }
     return list
+}
+
+@Target(AnnotationTarget.FILE)
+@Retention(AnnotationRetention.SOURCE)
+annotation class Namespace(val ns: String)
+
+@Target(AnnotationTarget.FILE)
+@Repeatable
+@Retention(AnnotationRetention.SOURCE)
+annotation class Jar(vararg val jars: String)
+
+@ScriptTemplateDefinition(resolver = MktsResolver::class)
+abstract class MktsResolverAnno
+
+class MktsResolver : DependenciesResolver {
+    @AcceptedAnnotations(Jar::class, Namespace::class)
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): DependenciesResolver.ResolveResult {
+        var base = "public"
+        val jars = ArrayList<String>()
+        scriptContents.annotations.forEach { annotation ->
+            when (annotation) {
+                is Namespace -> {
+                    base = annotation.ns
+                }
+                is Jar -> {
+                    annotation.jars.forEach {
+                        jars.add(it)
+                    }
+                }
+            }
+        }
+        val dir = (environment[ENV_MANAGER] as PluginManager).getLibDir(base)
+        val path = ArrayList<File>()
+        jars.forEach {
+            val jar = File(dir.absolutePath + File.separatorChar + it)
+            if (jar.exists()) {
+                path.add(jar)
+            } else {
+                MiraiKts.logger.error("无法找到 \"${(environment[ENV_FILENAME] as File).name}\" 所需的 \"${jar.absolutePath}\"")
+            }
+        }
+        return ScriptDependencies(
+            classpath = path
+        ).asSuccess()
+    }
 }

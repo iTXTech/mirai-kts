@@ -31,7 +31,6 @@ import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.*
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
-import org.jetbrains.kotlin.cli.common.repl.KotlinJsr223JvmScriptEngineBase
 import org.jetbrains.kotlin.cli.common.repl.ReplCompileResult
 import java.io.File
 import java.net.URL
@@ -58,22 +57,9 @@ open class PluginManager {
         File(plLib.absolutePath + File.separatorChar + name).apply { mkdirs() }
 
     open fun getClassLoader(
-        parent: ClassLoader,
-        namespace: String,
-        libs: ArrayList<String>,
-        filename: String
+        parent: ClassLoader
     ): URLClassLoader {
-        val base = getLibDir(namespace)
-        val urls = arrayListOf<URL>()
-        libs.forEach {
-            val jar = File(base.absolutePath + File.separatorChar + it)
-            if (jar.exists()) {
-                urls.add(jar.toURI().toURL())
-            } else {
-                MiraiKts.logger.error("无法找到 \"$filename\" 所需的 \"${jar.absolutePath}\"")
-            }
-        }
-        return URLClassLoader(urls.toTypedArray(), parent)
+        return URLClassLoader(ArrayList<URL>().toTypedArray(), parent)
     }
 
     protected val pluginId = atomic(0)
@@ -118,28 +104,21 @@ open class PluginManager {
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
-                val engine: KtsEngine
+                val engine = KtsEngineFactory.getScriptEngine(
+                    this@PluginManager, ktsFile,
+                    getClassLoader(this@PluginManager.javaClass.classLoader)
+                )
                 val metadata: MiraiKtsCacheMetadata
-                val mktsInfo: MktsInfo
                 val compiled: ReplCompileResult.CompiledClasses = if (compile) {
-                    val script = ktsFile.readText().apply {
-                        mktsInfo = readMktsInfo(ktsFile.name)
+                    try {
+                        engine.compile(ktsFile.readText())
+                            .apply {
+                                metadata = save(cacheFile, ktsFile, checksum)
+                            }
+                    } catch (e: Exception) {
+                        MiraiKts.logger.error("非法的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
+                        return@launch
                     }
-
-                    Thread.currentThread().contextClassLoader =
-                        getClassLoader(
-                            this@PluginManager.javaClass.classLoader,
-                            mktsInfo.namespace,
-                            mktsInfo.deps,
-                            ktsFile.name
-                        )
-                    engine = KtsEngineFactory.scriptEngine
-
-                    (engine.compile(script) as KotlinJsr223JvmScriptEngineBase.CompiledKotlinScript)
-                        .compiledData
-                        .apply {
-                            metadata = save(cacheFile, ktsFile, checksum, mktsInfo)
-                        }
                 } else {
                     cacheFile.readMkc().apply {
                         if (!ktsFile.name.endsWith(".mkc") && meta.checksum != checksum) {
@@ -147,16 +126,6 @@ open class PluginManager {
                             return@launch
                         }
                         metadata = meta
-                        mktsInfo = info
-
-                        Thread.currentThread().contextClassLoader =
-                            getClassLoader(
-                                this@PluginManager.javaClass.classLoader,
-                                mktsInfo.namespace,
-                                mktsInfo.deps,
-                                cacheFile.name
-                            )
-                        engine = KtsEngineFactory.scriptEngine
                     }.classes
                 }
 
@@ -177,7 +146,6 @@ open class PluginManager {
                 )
 
                 plugin.cacheMeta = metadata
-                plugin.mktsInfo = mktsInfo
                 plugins.values.forEach {
                     if (it.info.name == plugin.info.name || it.cacheMeta.checksum == plugin.cacheMeta.checksum) {
                         MiraiKts.logger.error("插件 \"${ktsFile.name}\" 与已加载的插件 \"${it.file.name}\" 冲突：相同的插件")
@@ -191,9 +159,6 @@ open class PluginManager {
                 plugins[id] = plugin
 
                 plugin.onLoad()
-
-                // 重新使用默认 ClassLoader 防止引用无法卸载
-                Thread.currentThread().contextClassLoader = this@PluginManager.javaClass.classLoader
             }
             return true
         }
@@ -241,8 +206,8 @@ open class PluginManager {
                         }
 
                         appendMessage("")
-                        appendMessage("MiraiKts 已生成 ${cache.listFiles()?.size} 个缓存文件，共 ${(size / 1024).toInt()} KB")
-                        appendMessage("共加载了 " + plugins.size + " 个 Mirai Kts 插件。")
+                        appendMessage("MiraiKts 已生成 ${cache.listFiles()?.size} 个缓存文件，共 ${(size / 1024).toInt()} KB。")
+                        appendMessage("共加载了 " + plugins.size + " 个 MiraiKts 插件。")
                         appendMessage("")
                         plugins.values.forEach { p ->
                             getCommonPluginInfo(p, this)
@@ -261,8 +226,6 @@ open class PluginManager {
                             appendMessage("缓存源文件名：" + p.cacheMeta.origin)
                             appendMessage("缓存文件：" + p.cacheMeta.file.name)
                             appendMessage("")
-                            appendMessage("外部库依赖命名空间：" + p.mktsInfo.namespace)
-                            appendMessage("依赖的外部库：" + p.mktsInfo.deps.joinToString(", "))
                         } else {
                             appendMessage("Id " + cmd[1] + " 不存在。")
                         }
