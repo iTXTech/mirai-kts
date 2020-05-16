@@ -26,6 +26,7 @@ package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
+import net.mamoe.mirai.console.command.CommandSender
 import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.*
@@ -141,7 +142,7 @@ open class PluginManager {
                         }
                 } else {
                     cacheFile.readMkc().apply {
-                        if (meta.checksum != checksum) {
+                        if (!ktsFile.name.endsWith(".mkc") && meta.checksum != checksum) {
                             MiraiKts.logger.error("非法的 MiraiKts 缓存文件 \"${cacheFile.name}\"，请删除该文件")
                             return@launch
                         }
@@ -164,7 +165,11 @@ open class PluginManager {
                     return@launch
                 }
 
-                val plugin = engine.eval(compiled) as KtsPlugin
+                val plugin = engine.eval(compiled)
+                if (plugin !is KtsPlugin) {
+                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}")
+                    return@launch
+                }
 
                 MiraiKts.logger.debug(
                     (if (compile) "编译 " else "缓存 ") +
@@ -172,6 +177,7 @@ open class PluginManager {
                 )
 
                 plugin.cacheMeta = metadata
+                plugin.mktsInfo = mktsInfo
                 plugins.values.forEach {
                     if (it.info.name == plugin.info.name || it.cacheMeta.checksum == plugin.cacheMeta.checksum) {
                         MiraiKts.logger.error("插件 \"${ktsFile.name}\" 与已加载的插件 \"${it.file.name}\" 冲突：相同的插件")
@@ -206,11 +212,23 @@ open class PluginManager {
         }
     }
 
+    fun getCommonPluginInfo(p: KtsPlugin, sender: CommandSender) {
+        sender.appendMessage(
+            "Id：" + p.id + " 文件：" + p.file.name + " 名称：" + p.info.name + " 状态：" +
+                    (if (p.enabled) "启用" else "停用") + " 版本：" + p.info.version +
+                    " 作者：" + p.info.author
+
+        )
+        if (p.info.website != "") {
+            sender.appendMessage("主页：" + p.info.website)
+        }
+    }
+
     open fun registerCommand() {
         MiraiKts.registerCommand {
             name = "kpm"
             description = "Mirai Kts 插件管理器"
-            usage = "kpm [list|enable|disable|load] (插件名/文件名)"
+            usage = "kpm [list|info|enable|disable|load] (插件名/文件名)"
             onCommand { cmd ->
                 if ((cmd.isEmpty() || (cmd[0] != "list" && cmd.size < 2))) {
                     return@onCommand false
@@ -222,18 +240,31 @@ open class PluginManager {
                             size += f.length()
                         }
 
+                        appendMessage("")
                         appendMessage("MiraiKts 已生成 ${cache.listFiles()?.size} 个缓存文件，共 ${(size / 1024).toInt()} KB")
                         appendMessage("共加载了 " + plugins.size + " 个 Mirai Kts 插件。")
+                        appendMessage("")
                         plugins.values.forEach { p ->
-                            appendMessage(
-                                "Id：" + p.id + " 文件：" + p.file.name + " 名称：" + p.info.name + " 状态：" +
-                                        (if (p.enabled) "启用" else "停用") + " 版本：" + p.info.version +
-                                        " 作者：" + p.info.author
-
-                            )
-                            if (p.info.website != "") {
-                                appendMessage("主页：" + p.info.website)
-                            }
+                            getCommonPluginInfo(p, this)
+                            appendMessage("")
+                        }
+                    }
+                    "info" -> {
+                        if (plugins.containsKey(cmd[1].toInt())) {
+                            val p = plugins[cmd[1].toInt()]!!
+                            appendMessage("插件信息：")
+                            getCommonPluginInfo(p, this)
+                            appendMessage("")
+                            appendMessage("使用缓存启动：" + (if (!p.cacheMeta.source) "是" else "否"))
+                            appendMessage("缓存文件头：" + p.cacheMeta.header)
+                            appendMessage("缓存源文件MD5：" + p.cacheMeta.checksum)
+                            appendMessage("缓存源文件名：" + p.cacheMeta.origin)
+                            appendMessage("缓存文件：" + p.cacheMeta.file.name)
+                            appendMessage("")
+                            appendMessage("外部库依赖命名空间：" + p.mktsInfo.namespace)
+                            appendMessage("依赖的外部库：" + p.mktsInfo.deps.joinToString(", "))
+                        } else {
+                            appendMessage("Id " + cmd[1] + " 不存在。")
                         }
                     }
                     "load" -> {

@@ -55,7 +55,9 @@ miraiPlugin {
                 )
             }
             .build()
-        logger.info(client.newCall(Request.Builder().url("https://im.qq.com").build()).execute())
+        val response = client.newCall(Request.Builder().url("https://im.qq.com").build()).execute()
+        logger.info(response.toString())
+        response.close()
     }
 
     enable {

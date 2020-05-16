@@ -66,19 +66,17 @@ class KtsPluginBuilder {
     }
 
     fun build(): KtsPlugin {
-        return KtsPlugin(MiraiKts.coroutineContext, info, load, enable, disable)
+        return KtsPlugin(info, load, enable, disable)
     }
 }
 
-class KtsPlugin(
-    coroutineContext: CoroutineContext,
+open class KtsPlugin(
     val info: KtsPluginInfo,
     var load: (KtsPlugin.() -> Unit)? = null,
     var enable: (KtsPlugin.() -> Unit)? = null,
     var disable: (KtsPlugin.() -> Unit)? = null
 ) : CoroutineScope {
-    private val supervisorJob = SupervisorJob()
-    override val coroutineContext: CoroutineContext = coroutineContext + supervisorJob
+    override val coroutineContext: CoroutineContext = MiraiKts.coroutineContext + SupervisorJob()
 
     lateinit var manager: PluginManager
     lateinit var file: File
@@ -102,18 +100,18 @@ class KtsPlugin(
         return MiraiKts.registerCommand(builder)
     }
 
-    fun onLoad() {
+    open fun onLoad() {
         load?.invoke(this)
     }
 
-    fun onEnable() {
+    open fun onEnable() {
         if (!enabled) {
             enabled = true
             enable?.invoke(this)
         }
     }
 
-    fun onDisable() {
+    open fun onDisable() {
         if (enabled) {
             enabled = false
             disable?.invoke(this)
@@ -127,3 +125,8 @@ class KtsPluginInfo {
     var author: String = "未知"
     var website: String = ""
 }
+
+inline fun pluginInfo(block: KtsPluginInfo.() -> Unit): KtsPluginInfo {
+    return KtsPluginInfo().apply(block)
+}
+
