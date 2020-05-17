@@ -29,12 +29,14 @@ import kotlinx.coroutines.*
 import net.mamoe.mirai.console.command.CommandSender
 import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.currentTimeMillis
-import org.itxtech.miraikts.*
+import org.itxtech.miraikts.MiraiKts
+import org.itxtech.miraikts.script.*
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
-import org.jetbrains.kotlin.cli.common.repl.ReplCompileResult
 import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
+import kotlin.script.experimental.api.CompiledScript
+import kotlin.script.experimental.api.ResultValue
 
 @OptIn(ObsoleteCoroutinesApi::class)
 open class PluginManager {
@@ -100,14 +102,18 @@ open class PluginManager {
                 val compile = !cacheFile.exists()
                 val start = currentTimeMillis
 
-                val engine = getScriptEngine(
+                val classpath: ArrayList<File>
+                val engine = KtsEngine(
                     this@PluginManager, ktsFile,
-                    getClassLoader(this@PluginManager.javaClass.classLoader)
+                    getClassLoader(this@PluginManager.javaClass.classLoader).apply { classpath = getClassPath(3) },
+                    classpath,
+                    ktsFile.parentFile.absolutePath
                 )
+
                 val metadata: MiraiKtsCacheMetadata
-                val compiled: ReplCompileResult.CompiledClasses = if (compile) {
+                val compiled: CompiledScript<*> = if (compile) {
                     try {
-                        engine.compile(ktsFile.readText())
+                        engine.compile(ktsFile)
                             .apply {
                                 metadata = save(cacheFile, ktsFile, checksum)
                             }
@@ -130,9 +136,11 @@ open class PluginManager {
                     return@launch
                 }
 
-                val plugin = engine.eval(compiled)
-                if (plugin !is KtsPlugin) {
-                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}")
+                val plugin: KtsPlugin
+                try {
+                    plugin = (engine.eval(compiled)!!.returnValue as ResultValue.Value).value as KtsPlugin
+                } catch (e: Exception) {
+                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}", e)
                     return@launch
                 }
 

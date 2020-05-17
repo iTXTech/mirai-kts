@@ -22,16 +22,16 @@
  *
  */
 
-package org.itxtech.miraikts
+package org.itxtech.miraikts.script
 
-import org.jetbrains.kotlin.cli.common.repl.ReplCompileResult
 import java.io.*
 import java.math.BigInteger
 import java.security.MessageDigest
+import kotlin.script.experimental.api.CompiledScript
 
 data class MiraiKtsCache(
     val meta: MiraiKtsCacheMetadata,
-    val classes: ReplCompileResult.CompiledClasses
+    val classes: CompiledScript<*>
 )
 
 data class MiraiKtsCacheMetadata(
@@ -62,14 +62,14 @@ fun File.readMkc(): MiraiKtsCache {
             si.readString(),
             this
         ),
-        (si.readObject() as ReplCompileResult.CompiledClasses).apply {
+        (si.readObject() as CompiledScript<*>).apply {
             si.close()
             bi.close()
         }
     )
 }
 
-fun ReplCompileResult.CompiledClasses.save(
+fun CompiledScript<*>.save(
     target: File,
     origin: File,
     checksum: String,

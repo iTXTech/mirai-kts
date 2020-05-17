@@ -32,9 +32,9 @@
 
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.itxtech.miraikts.Jar
-import org.itxtech.miraikts.Namespace
 import org.itxtech.miraikts.plugin.miraiPlugin
+import org.itxtech.miraikts.script.Jar
+import org.itxtech.miraikts.script.Namespace
 import java.util.concurrent.TimeUnit
 
 miraiPlugin {
