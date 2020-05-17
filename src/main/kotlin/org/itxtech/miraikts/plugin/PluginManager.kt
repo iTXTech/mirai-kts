@@ -154,7 +154,7 @@ open class PluginManager {
                 plugin.file = ktsFile
                 plugins[id] = plugin
 
-                plugin.onLoad()
+                plugin.load()
             }
             return true
         }
@@ -163,13 +163,13 @@ open class PluginManager {
 
     open fun enablePlugins() = launch {
         plugins.values.forEach {
-            it.onEnable()
+            it.enable()
         }
     }
 
     open fun disablePlugins() = launch {
         plugins.values.forEach {
-            it.onDisable()
+            it.disable()
         }
     }
 
@@ -233,14 +233,14 @@ open class PluginManager {
                     }
                     "enable" -> {
                         if (plugins.containsKey(cmd[1].toInt())) {
-                            plugins[cmd[1].toInt()]!!.onEnable()
+                            plugins[cmd[1].toInt()]!!.enable()
                         } else {
                             appendMessage("Id " + cmd[1] + " 不存在。")
                         }
                     }
                     "disable" -> {
                         if (plugins.containsKey(cmd[1].toInt())) {
-                            plugins[cmd[1].toInt()]!!.onDisable()
+                            plugins[cmd[1].toInt()]!!.disable()
                         } else {
                             appendMessage("Id " + cmd[1] + " 不存在。")
                         }

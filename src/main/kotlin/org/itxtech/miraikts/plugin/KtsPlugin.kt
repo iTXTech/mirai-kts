@@ -26,6 +26,7 @@ package org.itxtech.miraikts.plugin
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import net.mamoe.mirai.console.MiraiConsole
 import net.mamoe.mirai.console.command.CommandBuilder
 import net.mamoe.mirai.console.command.registerCommand
@@ -39,6 +40,8 @@ import kotlin.coroutines.CoroutineContext
 inline fun miraiPlugin(
     block: KtsPluginBuilder.() -> Unit
 ) = KtsPluginBuilder().apply(block).build()
+
+inline fun pluginInfo(block: KtsPluginInfo.() -> Unit) = KtsPluginInfo().apply(block)
 
 class KtsPluginBuilder {
     lateinit var info: KtsPluginInfo
@@ -72,7 +75,8 @@ open class KtsPlugin(
     var enable: (KtsPlugin.() -> Unit)? = null,
     var disable: (KtsPlugin.() -> Unit)? = null
 ) : CoroutineScope {
-    override val coroutineContext: CoroutineContext = MiraiKts.coroutineContext + SupervisorJob()
+    private val job = SupervisorJob()
+    override val coroutineContext: CoroutineContext = MiraiKts.coroutineContext + job
 
     lateinit var manager: PluginManager
     lateinit var file: File
@@ -93,21 +97,28 @@ open class KtsPlugin(
 
     fun registerCommand(builder: CommandBuilder.() -> Unit) = MiraiKts.registerCommand(builder)
 
-    open fun onLoad() = load?.invoke(this)
+    fun load() = onLoad()
 
-    open fun onEnable() {
+    fun enable() {
         if (!enabled) {
             enabled = true
-            enable?.invoke(this)
+            onEnable()
         }
     }
 
-    open fun onDisable() {
+    fun disable() {
         if (enabled) {
             enabled = false
-            disable?.invoke(this)
+            onDisable()
+            job.cancelChildren()
         }
     }
+
+    open fun onLoad() = load?.invoke(this)
+
+    open fun onEnable() = enable?.invoke(this)
+
+    open fun onDisable() = disable?.invoke(this)
 }
 
 class KtsPluginInfo {
@@ -116,5 +127,3 @@ class KtsPluginInfo {
     var author: String = "未知"
     var website: String = ""
 }
-
-inline fun pluginInfo(block: KtsPluginInfo.() -> Unit) = KtsPluginInfo().apply(block)
