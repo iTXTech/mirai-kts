@@ -25,7 +25,8 @@
 import org.itxtech.miraikts.plugin.KtsPlugin
 import org.itxtech.miraikts.plugin.pluginInfo
 
-class NoBuilderPlugin : KtsPlugin(
+// 一个 kts 插件中，只能存在一个 KtsPlugin object，且必须为 object
+object NoBuilderPlugin : KtsPlugin(
     pluginInfo {
         name = "KtsPluginNoBuilderExample"
         version = "1.0.0"
@@ -51,6 +52,3 @@ object TestClass {
         plugin.logger.info("数据文件夹 ${plugin.dataDir}")
     }
 }
-
-// 创建一个 KtsPlugin，必须放在最后
-NoBuilderPlugin()

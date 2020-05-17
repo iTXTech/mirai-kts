@@ -35,6 +35,7 @@ import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
 import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
+import kotlin.reflect.full.isSubclassOf
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
 
@@ -104,7 +105,7 @@ open class PluginManager {
 
                 val classpath: ArrayList<File>
                 val engine = KtsEngine(
-                    this@PluginManager, ktsFile,
+                    this@PluginManager,
                     getClassLoader(this@PluginManager.javaClass.classLoader).apply { classpath = getClassPath(3) },
                     classpath,
                     ktsFile.parentFile.absolutePath
@@ -113,10 +114,7 @@ open class PluginManager {
                 val metadata: MiraiKtsCacheMetadata
                 val compiled: CompiledScript<*> = if (compile) {
                     try {
-                        engine.compile(ktsFile)
-                            .apply {
-                                metadata = save(cacheFile, ktsFile, checksum)
-                            }
+                        engine.compile(ktsFile).apply { metadata = save(cacheFile, ktsFile, checksum) }
                     } catch (e: Exception) {
                         MiraiKts.logger.error("非法的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
                         return@launch
@@ -136,9 +134,23 @@ open class PluginManager {
                     return@launch
                 }
 
-                val plugin: KtsPlugin
+                var pl: KtsPlugin? = null
                 try {
-                    plugin = (engine.eval(compiled)!!.returnValue as ResultValue.Value).value as KtsPlugin
+                    when (val value = engine.eval(compiled).returnValue) {
+                        is ResultValue.Value -> pl = value.value as KtsPlugin
+                        else -> {
+                            value.scriptInstance!!::class.nestedClasses
+                                .filter { it.isSubclassOf(KtsPlugin::class) }
+                                .forEach {
+                                    if (it.objectInstance != null) {
+                                        pl = it.objectInstance as KtsPlugin
+                                    }
+                                }
+                        }
+                    }
+                    if (pl == null) {
+                        throw Exception("KtsPlugin Instance not found.")
+                    }
                 } catch (e: Exception) {
                     MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}", e)
                     return@launch
@@ -149,6 +161,7 @@ open class PluginManager {
                             "插件 \"${ktsFile.name}\" 加载耗时 " + (currentTimeMillis - start) + "ms"
                 )
 
+                val plugin = pl!!
                 plugin.cacheMeta = metadata
                 plugins.values.forEach {
                     if (it.info.name == plugin.info.name || it.cacheMeta.checksum == plugin.cacheMeta.checksum) {

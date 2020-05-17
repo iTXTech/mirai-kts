@@ -50,7 +50,10 @@ import java.io.PrintStream
 import java.net.URLClassLoader
 import kotlin.script.dependencies.Environment
 import kotlin.script.dependencies.ScriptContents
-import kotlin.script.experimental.api.*
+import kotlin.script.experimental.api.CompiledScript
+import kotlin.script.experimental.api.EvaluationResult
+import kotlin.script.experimental.api.ScriptEvaluationConfiguration
+import kotlin.script.experimental.api.valueOrThrow
 import kotlin.script.experimental.dependencies.DependenciesResolver
 import kotlin.script.experimental.dependencies.ScriptDependencies
 import kotlin.script.experimental.dependencies.asSuccess
@@ -70,7 +73,6 @@ const val ENV_BASE_PATH = "basepath"
 
 class KtsEngine(
     private val manager: PluginManager,
-    private val ktsFile: File,
     private val loader: ClassLoader,
     private val templateClasspath: List<File>,
     private val basePath: String
@@ -97,7 +99,7 @@ class KtsEngine(
                         MktsResolverAnno::class,
                         mapOf(
                             Pair(ENV_MANAGER, manager),
-                            Pair(ENV_FILENAME, ktsFile),
+                            Pair(ENV_FILENAME, file),
                             Pair(ENV_BASE_PATH, basePath)
                         )
                     )
@@ -112,7 +114,6 @@ class KtsEngine(
                 )
             )
             put(JVMConfigurationKeys.RETAIN_OUTPUT_IN_MEMORY, true)
-
             if (get(JVMConfigurationKeys.JVM_TARGET) == null) {
                 put(JVMConfigurationKeys.JVM_TARGET,
                     System.getProperty("java.specification.version")?.let { JvmTarget.fromString(it) }
@@ -127,13 +128,9 @@ class KtsEngine(
         return compiler.compile(script, def).valueOrThrow()
     }
 
-    suspend fun eval(compiled: CompiledScript<*>): EvaluationResult? {
-        val config = ScriptEvaluationConfiguration {
-            jvm {
-                baseClassLoader(loader)
-            }
-        }
-        return BasicJvmScriptEvaluator().invoke(compiled, config).valueOrNull()
+    suspend fun eval(compiled: CompiledScript<*>): EvaluationResult {
+        val config = ScriptEvaluationConfiguration { jvm { baseClassLoader(loader) } }
+        return BasicJvmScriptEvaluator().invoke(compiled, config).valueOrThrow()
     }
 }
 
@@ -208,9 +205,9 @@ class MktsResolver : DependenciesResolver {
             classpath = path,
             //sources = includes,
             imports = listOf(
-                //"org.itxtech.miraikts.engine.Include",
-                "org.itxtech.miraikts.engine.Jar",
-                "org.itxtech.miraikts.engine.Namespace"
+                //"org.itxtech.miraikts.script.Include",
+                "org.itxtech.miraikts.script.Jar",
+                "org.itxtech.miraikts.script.Namespace"
             )
         ).asSuccess()
     }
