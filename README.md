@@ -20,9 +20,10 @@
 ## Mirai Kts 插件管理器 `kpm`
 
 1. 在 `mirai console` 中键入 `kpm` 获得帮助
-1. `kpm` (`Kotlin Script Plugin Manager`) 可`列出/启用/停用/加载插件` 和 `查看插件信息`
+1. `kpm` (`Kotlin Script Plugin Manager`) 可`列出/启用/停用/加载/卸载插件` 和 `查看插件信息`
+1. **卸载**插件不会真正发生类卸载事件，仅代表该插件生命周期结束，此时可以重新加载修改后的脚本
 
-`kpm [list|info|enable|disable|load] (插件名/文件名)`
+`kpm [list|info|enable|disable|load|unload] (插件名/文件名)`
 
 
 ## 开源协议

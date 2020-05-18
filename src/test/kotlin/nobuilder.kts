@@ -39,11 +39,15 @@ object NoBuilderPlugin : KtsPlugin(
     }
 
     override fun onEnable() {
-        logger.info("KtsPlugin 已启用！")
+        logger.info("KtsNoBuilder 已启用！")
     }
 
     override fun onDisable() {
-        logger.info("KtsPlugin 已停用！")
+        logger.info("KtsNoBuilder 已停用！")
+    }
+
+    override fun onUnload() {
+        logger.info("KtsNoBuilder 已卸载！")
     }
 }
 

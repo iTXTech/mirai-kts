@@ -81,4 +81,8 @@ miraiPlugin {
     disable {
         logger.info("KtsPlugin 已停用！")
     }
+
+    unload {
+        logger.info("KtsPlugin 已卸载！")
+    }
 }

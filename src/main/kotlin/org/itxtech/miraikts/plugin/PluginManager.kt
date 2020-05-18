@@ -71,7 +71,7 @@ open class PluginManager {
         if (!MiraiKts.dataFolder.isDirectory) {
             MiraiKts.logger.error("数据文件夹不是一个文件夹！" + MiraiKts.dataFolder.absolutePath)
         } else {
-            plDir.listFiles()?.forEach { file ->
+            plDir.listFiles()?.filter { it.name.endsWith(".mkc") || it.name.endsWith(".kts") }?.forEach { file ->
                 loadPlugin(file)
             }
         }
@@ -118,7 +118,7 @@ open class PluginManager {
                 val compiled: CompiledScript<*> = if (compile) {
                     try {
                         engine.compile(ktsFile).apply { metadata = save(cacheFile, ktsFile, checksum) }
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         MiraiKts.logger.error("非法的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
                         return@launch
                     }
@@ -158,8 +158,8 @@ open class PluginManager {
                     if (pl == null) {
                         throw Exception("KtsPlugin Instance not found.")
                     }
-                } catch (e: Exception) {
-                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
+                } catch (e: Throwable) {
+                    MiraiKts.logger.error("非法的 MiraiKts 插件文件 \"${ktsFile.name}\"，缓存文件 \"${cacheFile.name}\"", e)
                     return@launch
                 }
 
@@ -195,7 +195,7 @@ open class PluginManager {
         }
     }
 
-    open fun enablePlugins() = launch {
+    open fun enablePlugins() {
         job.children.forEach { job ->
             job.invokeOnCompletion {
                 enablePl()
@@ -204,10 +204,15 @@ open class PluginManager {
         enablePl()
     }
 
-    open fun disablePlugins() = launch {
+    open fun disablePlugins() {
         plugins.values.forEach {
             it.disable()
         }
+    }
+
+    open fun unloadPlugin(plugin: KtsPlugin) {
+        plugin.unload()
+        plugins.remove(plugin.id)
     }
 
     private fun getCommonPluginInfo(p: KtsPlugin, sender: CommandSender) {
@@ -226,7 +231,7 @@ open class PluginManager {
         MiraiKts.registerCommand {
             name = "kpm"
             description = "Mirai Kts 插件管理器"
-            usage = "kpm [list|info|enable|disable|load] (插件名/文件名)"
+            usage = "kpm [list|info|enable|disable|load|unload] (插件名/文件名)"
             onCommand { cmd ->
                 if ((cmd.isEmpty() || (cmd[0] != "list" && cmd.size < 2))) {
                     return@onCommand false
@@ -234,12 +239,14 @@ open class PluginManager {
                 when (cmd[0]) {
                     "list" -> {
                         var size = 0L
-                        cache.listFiles()?.forEach { f ->
+                        var cnt = 0
+                        cache.listFiles()?.filter { it.name.endsWith(".mkc") }?.forEach { f ->
                             size += f.length()
+                            cnt++
                         }
 
                         appendMessage("")
-                        appendMessage("MiraiKts 已生成 ${cache.listFiles()?.size} 个缓存文件，共 ${(size / 1024).toInt()} KB。")
+                        appendMessage("MiraiKts 已生成 $cnt 个缓存文件，共 ${(size / 1024).toInt()} KB。")
                         appendMessage("共加载了 " + plugins.size + " 个 MiraiKts 插件。")
                         appendMessage("")
                         plugins.values.forEach { p ->
@@ -266,6 +273,13 @@ open class PluginManager {
                     "load" -> {
                         if (!loadPlugin(File(plDir.absolutePath + File.separatorChar + cmd[1]))) {
                             appendMessage("文件 \"${cmd[1]}\" 非法。")
+                        }
+                    }
+                    "unload" -> {
+                        if (plugins.containsKey(cmd[1].toInt())) {
+                            unloadPlugin(plugins[cmd[1].toInt()]!!)
+                        } else {
+                            appendMessage("Id " + cmd[1] + " 不存在。")
                         }
                     }
                     "enable" -> {

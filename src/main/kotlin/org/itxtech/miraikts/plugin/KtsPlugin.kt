@@ -28,7 +28,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import net.mamoe.mirai.console.MiraiConsole
+import net.mamoe.mirai.console.command.Command
 import net.mamoe.mirai.console.command.CommandBuilder
+import net.mamoe.mirai.console.command.CommandManager
 import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.MiraiLogger
 import net.mamoe.mirai.utils.SimpleLogger
@@ -49,6 +51,7 @@ class KtsPluginBuilder {
     var load: (KtsPlugin.() -> Unit)? = null
     var enable: (KtsPlugin.() -> Unit)? = null
     var disable: (KtsPlugin.() -> Unit)? = null
+    var unload: (KtsPlugin.() -> Unit)? = null
 
     fun info(block: KtsPluginInfo.() -> Unit) {
         info = KtsPluginInfo().apply(block)
@@ -66,14 +69,19 @@ class KtsPluginBuilder {
         disable = block
     }
 
-    fun build() = KtsPlugin(info, load, enable, disable)
+    fun unload(block: KtsPlugin.() -> Unit) {
+        unload = block
+    }
+
+    fun build() = KtsPlugin(info, load, enable, disable, unload)
 }
 
 open class KtsPlugin(
     val info: KtsPluginInfo,
-    var load: (KtsPlugin.() -> Unit)? = null,
-    var enable: (KtsPlugin.() -> Unit)? = null,
-    var disable: (KtsPlugin.() -> Unit)? = null
+    protected var load: (KtsPlugin.() -> Unit)? = null,
+    protected var enable: (KtsPlugin.() -> Unit)? = null,
+    protected var disable: (KtsPlugin.() -> Unit)? = null,
+    protected var unload: (KtsPlugin.() -> Unit)? = null
 ) : CoroutineScope {
     private val job = SupervisorJob()
     override val coroutineContext: CoroutineContext = MiraiKts.coroutineContext + job
@@ -84,6 +92,7 @@ open class KtsPlugin(
     var id: Int = 0
     var enabled = false
     val dataDir: File by lazy { manager.getPluginDataDir(info.name) }
+    val commands = arrayListOf<Command>()
 
     val logger: MiraiLogger by lazy {
         SimpleLogger("KtsPlugin ${info.name}") { priority, message, e ->
@@ -95,8 +104,13 @@ open class KtsPlugin(
         }
     }
 
-    fun registerCommand(builder: CommandBuilder.() -> Unit) = MiraiKts.registerCommand(builder)
+    fun registerCommand(builder: CommandBuilder.() -> Unit) =
+        MiraiKts.registerCommand(builder).apply { commands += this }
 
+
+    /**
+     * 必须保证只被调用一次
+     */
     fun load() = onLoad()
 
     fun enable() {
@@ -114,11 +128,25 @@ open class KtsPlugin(
         }
     }
 
+    /**
+     * 调用后要清除所有引用，尽管不会发生类卸载
+     */
+    fun unload() {
+        disable()
+        onUnload()
+        job.cancel()
+        commands.forEach {
+            CommandManager.unregister(it)
+        }
+    }
+
     open fun onLoad() = load?.invoke(this)
 
     open fun onEnable() = enable?.invoke(this)
 
     open fun onDisable() = disable?.invoke(this)
+
+    open fun onUnload() = unload?.invoke(this)
 }
 
 class KtsPluginInfo {

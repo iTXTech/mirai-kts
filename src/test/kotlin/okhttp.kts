@@ -73,4 +73,8 @@ miraiPlugin {
     disable {
         logger.info("KtsOkhttp 已停用！")
     }
+
+    unload {
+        logger.info("KtsOkhttp 已卸载！")
+    }
 }
