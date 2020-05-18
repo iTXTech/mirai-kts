@@ -35,20 +35,23 @@ import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
 import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.full.isSubclassOf
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
 
-@OptIn(ObsoleteCoroutinesApi::class)
 open class PluginManager {
     protected val plDir: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "plugins").also { it.mkdirs() } }
     protected val plData: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "data").also { it.mkdirs() } }
     protected val plLib: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "lib").also { it.mkdirs() } }
     protected val cache: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "cache").also { it.mkdirs() } }
 
-    protected val context = newSingleThreadContext("MiraiKts")
+    protected val job = SupervisorJob()
+
+    @OptIn(ObsoleteCoroutinesApi::class)
+    protected val context = newFixedThreadPoolContext(Runtime.getRuntime().availableProcessors(), "MiraiKts") + job
     protected val pluginId = atomic(0)
-    protected val plugins = hashMapOf<Int, KtsPlugin>()
+    protected val plugins = ConcurrentHashMap<Int, KtsPlugin>()
 
     init {
         setIdeaIoUseFallback()
@@ -143,7 +146,11 @@ open class PluginManager {
                                 .filter { it.isSubclassOf(KtsPlugin::class) }
                                 .forEach {
                                     if (it.objectInstance != null) {
-                                        pl = it.objectInstance as KtsPlugin
+                                        if (pl == null) {
+                                            pl = it.objectInstance as KtsPlugin
+                                        } else {
+                                            throw Exception("Two or more KtsPlugin objects detected.")
+                                        }
                                     }
                                 }
                         }
@@ -152,7 +159,7 @@ open class PluginManager {
                         throw Exception("KtsPlugin Instance not found.")
                     }
                 } catch (e: Exception) {
-                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}", e)
+                    MiraiKts.logger.error("错误的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
                     return@launch
                 }
 
@@ -182,10 +189,19 @@ open class PluginManager {
         return false
     }
 
-    open fun enablePlugins() = launch {
+    private fun enablePl() {
         plugins.values.forEach {
             it.enable()
         }
+    }
+
+    open fun enablePlugins() = launch {
+        job.children.forEach { job ->
+            job.invokeOnCompletion {
+                enablePl()
+            }
+        }
+        enablePl()
     }
 
     open fun disablePlugins() = launch {
