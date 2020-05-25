@@ -36,9 +36,14 @@ import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import kotlin.reflect.full.isSubclassOf
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
+import kotlin.script.experimental.api.SourceCode
+import kotlin.script.experimental.host.FileScriptSource
+import kotlin.script.experimental.host.toScriptSource
 
 open class PluginManager {
     protected val plDir: File by lazy { File(MiraiKts.dataFolder.absolutePath + File.separatorChar + "plugins").also { it.mkdirs() } }
@@ -59,6 +64,10 @@ open class PluginManager {
 
     private fun launch(b: suspend CoroutineScope.() -> Unit): Job = MiraiKts.launch(context, block = b)
 
+    private fun isValidFile(file: File) =
+        file.exists() && file.isFile &&
+                (file.name.endsWith(".kts") || file.name.endsWith(".mkc") || file.name.endsWith(".kts.zip"))
+
     open fun getPluginDataDir(name: String) =
         File(plData.absolutePath + File.separatorChar + name).apply { mkdirs() }
 
@@ -71,16 +80,14 @@ open class PluginManager {
         if (!MiraiKts.dataFolder.isDirectory) {
             MiraiKts.logger.error("数据文件夹不是一个文件夹！" + MiraiKts.dataFolder.absolutePath)
         } else {
-            plDir.listFiles()?.filter { it.name.endsWith(".mkc") || it.name.endsWith(".kts") }?.forEach { file ->
+            plDir.listFiles()?.filter { isValidFile(it) }?.forEach { file ->
                 loadPlugin(file)
             }
         }
     }
 
     open fun loadPlugin(ktsFile: File): Boolean {
-        if (ktsFile.exists() && ktsFile.isFile &&
-            (ktsFile.name.endsWith(".kts") || ktsFile.name.endsWith(".mkc"))
-        ) {
+        if (isValidFile(ktsFile)) {
             MiraiKts.logger.info("正在加载 MiraiKts 插件：" + ktsFile.name)
             plugins.values.forEach {
                 if (it.file == ktsFile) {
@@ -90,7 +97,50 @@ open class PluginManager {
 
             val id = pluginId.getAndIncrement()
             launch {
-                val checksum = ktsFile.checksum()
+                var checksum: String? = null
+                var script: SourceCode? = null
+                if (ktsFile.name.endsWith(".kts.zip")) {
+                    val zip = ZipFile(ktsFile)
+                    val entries = zip.entries()
+                    var source: String? = null
+                    var jarDir = ""
+                    val jars = ArrayList<ZipEntry>()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (!entry.isDirectory && entry.name.endsWith(".kts")) {
+                            if (source == null) {
+                                source = String(zip.getInputStream(entry).readBytes())
+                                checksum = source.toByteArray().checksum()
+                                script = FileScriptSource(ktsFile, source)
+                            } else {
+                                throw Exception("Illegal .kts.zip ${ktsFile.name}: Multiple Kts files")
+                            }
+                        }
+                        if (entry.isDirectory) {
+                            if (jarDir == "") {
+                                jarDir = entry.name
+                            } else {
+                                throw Exception("Illegal .kts.zip ${ktsFile.name}: Multiple Directories")
+                            }
+                        }
+                        if (jarDir != "" && entry.name.startsWith(jarDir) && entry.name != jarDir) {
+                            jars += entry
+                        }
+                    }
+                    jars.forEach { jar ->
+                        val file = File(plLib.absolutePath + File.separatorChar + jar.name)
+                        println(file)
+                        if (!file.exists()) {
+                            file.parentFile.mkdirs()
+                            file.outputStream().use { zip.getInputStream(jar).copyTo(it) }
+                        }
+                    }
+                    zip.close()
+                } else if (ktsFile.name.endsWith(".kts")) {
+                    script = ktsFile.toScriptSource()
+                    checksum = ktsFile.checksum()
+                }
+
                 val cacheFile = if (ktsFile.name.endsWith(".mkc")) {
                     ktsFile
                 } else {
@@ -100,7 +150,7 @@ open class PluginManager {
                             return@launch
                         }
                     }
-                    ktsFile.findCache(cache, checksum)
+                    ktsFile.findCache(cache, checksum!!)
                 }
 
                 val compile = !cacheFile.exists()
@@ -110,14 +160,13 @@ open class PluginManager {
                 val engine = KtsEngine(
                     this@PluginManager,
                     getClassLoader(this@PluginManager.javaClass.classLoader).apply { classpath = getClassPath(3) },
-                    classpath,
-                    ktsFile.parentFile.absolutePath
+                    classpath
                 )
 
                 val metadata: MiraiKtsCacheMetadata
                 val compiled: CompiledScript<*> = if (compile) {
                     try {
-                        engine.compile(ktsFile).apply { metadata = save(cacheFile, ktsFile, checksum) }
+                        engine.compile(script!!).apply { metadata = save(cacheFile, ktsFile, checksum!!) }
                     } catch (e: Throwable) {
                         MiraiKts.logger.error("非法的 MiraiKts 插件文件 \"${ktsFile.name}\"", e)
                         return@launch

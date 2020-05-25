@@ -41,7 +41,6 @@ import org.jetbrains.kotlin.scripting.compiler.plugin.ScriptingCompilerConfigura
 import org.jetbrains.kotlin.scripting.compiler.plugin.impl.ScriptJvmCompilerFromEnvironment
 import org.jetbrains.kotlin.scripting.configuration.ScriptingConfigurationKeys
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition
-import org.jetbrains.kotlin.scripting.definitions.ScriptDefinitionProvider
 import org.jetbrains.kotlin.scripting.resolve.KotlinScriptDefinitionFromAnnotatedTemplate
 import org.jetbrains.kotlin.utils.PathUtil
 import java.io.File
@@ -50,16 +49,12 @@ import java.io.PrintStream
 import java.net.URLClassLoader
 import kotlin.script.dependencies.Environment
 import kotlin.script.dependencies.ScriptContents
-import kotlin.script.experimental.api.CompiledScript
-import kotlin.script.experimental.api.EvaluationResult
-import kotlin.script.experimental.api.ScriptEvaluationConfiguration
-import kotlin.script.experimental.api.valueOrThrow
+import kotlin.script.experimental.api.*
 import kotlin.script.experimental.dependencies.DependenciesResolver
 import kotlin.script.experimental.dependencies.ScriptDependencies
 import kotlin.script.experimental.dependencies.asSuccess
 import kotlin.script.experimental.host.ScriptingHostConfiguration
 import kotlin.script.experimental.host.configurationDependencies
-import kotlin.script.experimental.host.toScriptSource
 import kotlin.script.experimental.jvm.*
 import kotlin.script.templates.AcceptedAnnotations
 import kotlin.script.templates.ScriptTemplateDefinition
@@ -74,11 +69,10 @@ const val ENV_BASE_PATH = "basepath"
 class KtsEngine(
     private val manager: PluginManager,
     private val loader: ClassLoader,
-    private val templateClasspath: List<File>,
-    private val basePath: String
+    private val templateClasspath: List<File>
+    //private val basePath: String
 ) {
-    fun compile(file: File): CompiledScript<*> {
-        val script = file.toScriptSource()
+    fun compile(script: SourceCode): CompiledScript<*> {
         val rootDisposable = Disposer.newDisposable()
         val config = CompilerConfiguration().apply {
             addJvmSdkRoots(PathUtil.getJdkClassesRootsFromCurrentJre())
@@ -99,8 +93,8 @@ class KtsEngine(
                         MktsResolverAnno::class,
                         mapOf(
                             Pair(ENV_MANAGER, manager),
-                            Pair(ENV_FILENAME, file),
-                            Pair(ENV_BASE_PATH, basePath)
+                            Pair(ENV_FILENAME, script.name)
+                            //Pair(ENV_BASE_PATH, basePath)
                         )
                     )
                 )
@@ -108,7 +102,10 @@ class KtsEngine(
             put(
                 CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY,
                 PrintingMessageCollector(
-                    PrintStream(OutputStream.nullOutputStream()),
+                    PrintStream(object : OutputStream() {
+                        override fun write(b: Int) {
+                        }
+                    }),
                     MessageRenderer.WITHOUT_PATHS,
                     false
                 )
@@ -123,9 +120,7 @@ class KtsEngine(
         val env =
             KotlinCoreEnvironment.createForProduction(rootDisposable, config, EnvironmentConfigFiles.JVM_CONFIG_FILES)
         val compiler = ScriptJvmCompilerFromEnvironment(env)
-        val def = ScriptDefinitionProvider.getInstance(env.project)!!
-            .findDefinition(script)!!.compilationConfiguration
-        return compiler.compile(script, def).valueOrThrow()
+        return compiler.compile(script, ScriptCompilationConfiguration()).valueOrThrow()
     }
 
     suspend fun eval(compiled: CompiledScript<*>): EvaluationResult {

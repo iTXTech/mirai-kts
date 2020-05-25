@@ -24,6 +24,8 @@
 
 package org.itxtech.miraikts.script
 
+import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.internal.readExactNBytes
 import java.io.*
 import java.math.BigInteger
 import java.security.MessageDigest
@@ -44,9 +46,11 @@ data class MiraiKtsCacheMetadata(
     fun verifyHeader(h: String = HEADER) = header == h
 }
 
-fun File.checksum(): String = BigInteger(
-    1, MessageDigest.getInstance("MD5").digest(readBytes())
+fun ByteArray.checksum(): String = BigInteger(
+    1, MessageDigest.getInstance("MD5").digest(this)
 ).toString(16).padStart(32, '0')
+
+fun File.checksum(): String = readBytes().checksum()
 
 fun File.findCache(dir: File, checksum: String = checksum()) =
     File(dir.absolutePath + File.separatorChar + checksum + ".mkc")
@@ -92,7 +96,8 @@ fun CompiledScript<*>.save(
     )
 }
 
-fun ObjectInputStream.readString() = String(readNBytes(readShort().toInt()))
+@OptIn(InternalSerializationApi::class)
+fun ObjectInputStream.readString() = String(readExactNBytes(readShort().toInt()))
 
 fun ObjectOutputStream.writeString(str: String) {
     writeShort(str.length)
