@@ -1,5 +1,5 @@
 name: MiraiKts
 main: org.itxtech.miraikts.MiraiKts
-version: 1.0.0
+version: 1.0.1
 author: iTX Technologies
-info: 使用 Kotlin Script 编写 Mirai 插件。
+info: 强大的 Mirai Kotlin Script 插件加载器。
