@@ -60,7 +60,7 @@ import kotlin.script.templates.AcceptedAnnotations
 import kotlin.script.templates.ScriptTemplateDefinition
 
 // 后续版本号为 2531
-const val HEADER = "MKCv531"
+const val HEADER = "MKCv2531"
 
 const val ENV_MANAGER = "manager"
 const val ENV_FILENAME = "filename"
@@ -72,7 +72,7 @@ class KtsEngine(
     private val templateClasspath: List<File>
     //private val basePath: String
 ) {
-    fun compile(script: SourceCode): CompiledScript<*> {
+    fun compile(script: SourceCode): CompiledScript {
         val rootDisposable = Disposer.newDisposable()
         val config = CompilerConfiguration().apply {
             addJvmSdkRoots(PathUtil.getJdkClassesRootsFromCurrentJre())
@@ -123,7 +123,7 @@ class KtsEngine(
         return compiler.compile(script, ScriptCompilationConfiguration()).valueOrThrow()
     }
 
-    suspend fun eval(compiled: CompiledScript<*>): EvaluationResult {
+    suspend fun eval(compiled: CompiledScript): EvaluationResult {
         val config = ScriptEvaluationConfiguration { jvm { baseClassLoader(loader) } }
         return BasicJvmScriptEvaluator().invoke(compiled, config).valueOrThrow()
     }

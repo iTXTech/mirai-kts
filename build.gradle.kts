@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "1.3.72"
-    kotlin("plugin.serialization") version "1.3.72"
+    kotlin("jvm") version "1.4.0"
+    kotlin("plugin.serialization") version "1.4.0"
 }
 
 group = "org.itxtech"
@@ -22,8 +22,7 @@ repositories {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.8")
-    implementation(kotlin("stdlib-jdk8"))
+    api("org.jetbrains.kotlinx:atomicfu:0.14.4")
 
     implementation(kotlin("script-runtime"))
     implementation(kotlin("script-util"))
@@ -32,7 +31,7 @@ dependencies {
     implementation(kotlin("scripting-compiler-impl-embeddable"))
     implementation("org.jetbrains.intellij.deps:trove4j:1.0.20200330")
 
-    implementation("net.mamoe:mirai-core:1.1.3")
+    implementation("net.mamoe:mirai-core:1.2.0")
     implementation("net.mamoe:mirai-console:0.5.2")
 }
 

@@ -24,8 +24,6 @@
 
 package org.itxtech.miraikts.script
 
-import kotlinx.serialization.InternalSerializationApi
-import kotlinx.serialization.internal.readExactNBytes
 import java.io.*
 import java.math.BigInteger
 import java.security.MessageDigest
@@ -33,7 +31,7 @@ import kotlin.script.experimental.api.CompiledScript
 
 data class MiraiKtsCache(
     val meta: MiraiKtsCacheMetadata,
-    val classes: CompiledScript<*>
+    val classes: CompiledScript
 )
 
 data class MiraiKtsCacheMetadata(
@@ -66,14 +64,14 @@ fun File.readMkc(): MiraiKtsCache {
             si.readString(),
             this
         ),
-        (si.readObject() as CompiledScript<*>).apply {
+        (si.readObject() as CompiledScript).apply {
             si.close()
             bi.close()
         }
     )
 }
 
-fun CompiledScript<*>.save(
+fun CompiledScript.save(
     target: File,
     origin: File,
     checksum: String,
@@ -96,8 +94,17 @@ fun CompiledScript<*>.save(
     )
 }
 
-@OptIn(InternalSerializationApi::class)
-fun ObjectInputStream.readString() = String(readExactNBytes(readShort().toInt()))
+fun ObjectInputStream.readString(): String {
+    val len = readShort().toInt()
+    val array = ByteArray(len)
+    var read = 0
+    while (read < len) {
+        val i = this.read(array, read, len - read)
+        if (i == -1) error("Unexpected EOF")
+        read += i
+    }
+    return String(array)
+}
 
 fun ObjectOutputStream.writeString(str: String) {
     writeShort(str.length)

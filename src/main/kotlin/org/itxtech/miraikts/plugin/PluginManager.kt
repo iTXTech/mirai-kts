@@ -163,8 +163,8 @@ open class PluginManager {
                     classpath
                 )
 
-                val metadata: MiraiKtsCacheMetadata
-                val compiled: CompiledScript<*> = if (compile) {
+                lateinit var metadata: MiraiKtsCacheMetadata
+                val compiled: CompiledScript = if (compile) {
                     try {
                         engine.compile(script!!).apply { metadata = save(cacheFile, ktsFile, checksum!!) }
                     } catch (e: Throwable) {
