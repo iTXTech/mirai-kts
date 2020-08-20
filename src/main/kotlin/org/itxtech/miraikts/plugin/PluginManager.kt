@@ -26,8 +26,12 @@ package org.itxtech.miraikts.plugin
 
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
+import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandSender
-import net.mamoe.mirai.console.command.registerCommand
+import net.mamoe.mirai.console.command.CompositeCommand
+import net.mamoe.mirai.console.command.ConsoleCommandOwner
+import net.mamoe.mirai.console.command.sendMessage
+import net.mamoe.mirai.console.util.ConsoleExperimentalAPI
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.MiraiKts
 import org.itxtech.miraikts.script.*
@@ -57,6 +61,8 @@ open class PluginManager {
     protected val context = newFixedThreadPoolContext(Runtime.getRuntime().availableProcessors(), "MiraiKts") + job
     protected val pluginId = atomic(0)
     protected val plugins = ConcurrentHashMap<Int, KtsPlugin>()
+
+    protected val command = KpmCommand(this)
 
     init {
         setIdeaIoUseFallback()
@@ -264,91 +270,103 @@ open class PluginManager {
         plugins.remove(plugin.id)
     }
 
-    private fun getCommonPluginInfo(p: KtsPlugin, sender: CommandSender) {
-        sender.appendMessage(
-            "Id：" + p.id + " 文件：" + p.file.name + " 名称：" + p.info.name + " 状态：" +
-                    (if (p.enabled) "启用" else "停用") + " 版本：" + p.info.version +
-                    " 作者：" + p.info.author
+    @OptIn(ConsoleExperimentalAPI::class)
+    class KpmCommand(val manager: PluginManager) : CompositeCommand(
+        ConsoleCommandOwner, "kpm",
+        description = "Mirai Kts 插件管理器"
+    ) {
+        private fun StringBuilder.getCommonPluginInfo(p: KtsPlugin) {
+            appendLine("Id：${p.id} 文件：${p.file.name} 名称：${p.info.name} 状态：${if (p.enabled) "启用" else "停用"} 版本：${p.info.version} 作者：${p.info.author}")
+            if (p.info.website != "") {
+                appendLine("主页：${p.info.website}")
+            }
+        }
 
-        )
-        if (p.info.website != "") {
-            sender.appendMessage("主页：" + p.info.website)
+        @SubCommand
+        suspend fun CommandSender.list() {
+            sendMessage(buildString {
+                var size = 0L
+                var cnt = 0
+                manager.cache.listFiles()?.filter { it.name.endsWith(".mkc") }?.forEach { f ->
+                    size += f.length()
+                    cnt++
+                }
+
+                appendLine("")
+                appendLine("MiraiKts 已生成 $cnt 个缓存文件，共 ${(size / 1024).toInt()} KB。")
+                appendLine("共加载了 ${manager.plugins.size} 个 MiraiKts 插件。")
+                appendLine("")
+                manager.plugins.values.forEach { p ->
+                    getCommonPluginInfo(p)
+                    appendLine("")
+                }
+            })
+        }
+
+        @SubCommand
+        suspend fun CommandSender.info(@Name("插件Id") id: Int) {
+            sendMessage(buildString {
+                if (manager.plugins.containsKey(id)) {
+                    val p = manager.plugins[id]!!
+                    appendLine("插件信息：")
+                    getCommonPluginInfo(p)
+                    appendLine("")
+                    appendLine("使用缓存启动：" + (if (!p.cacheMeta.source) "是" else "否"))
+                    appendLine("缓存文件头：${p.cacheMeta.header}")
+                    appendLine("缓存源文件MD5：${p.cacheMeta.checksum}")
+                    appendLine("缓存源文件名：${p.cacheMeta.origin}")
+                    appendLine("缓存文件：${p.cacheMeta.file.name}")
+                    appendLine("")
+                } else {
+                    appendLine("Id $id 不存在。")
+                }
+            })
+        }
+
+        @SubCommand
+        suspend fun CommandSender.load(@Name("Kts文件名") file: String) {
+            sendMessage(buildString {
+                if (!manager.loadPlugin(File(manager.plDir.absolutePath + File.separatorChar + file))) {
+                    appendLine("文件 \"${file}\" 非法。")
+                }
+            })
+        }
+
+        @SubCommand
+        suspend fun CommandSender.unload(@Name("插件Id") id: Int) {
+            sendMessage(buildString {
+                if (manager.plugins.containsKey(id)) {
+                    manager.unloadPlugin(manager.plugins[id]!!)
+                } else {
+                    appendLine("Id $id 不存在。")
+                }
+            })
+        }
+
+        @SubCommand
+        suspend fun CommandSender.enable(@Name("插件Id") id: Int) {
+            sendMessage(buildString {
+                if (manager.plugins.containsKey(id)) {
+                    manager.plugins[id]!!.enable()
+                } else {
+                    appendLine("Id $id 不存在。")
+                }
+            })
+        }
+
+        @SubCommand
+        suspend fun CommandSender.disable(@Name("插件Id") id: Int) {
+            sendMessage(buildString {
+                if (manager.plugins.containsKey(id)) {
+                    manager.plugins[id]!!.disable()
+                } else {
+                    appendLine("Id $id 不存在。")
+                }
+            })
         }
     }
 
     open fun registerCommand() {
-        MiraiKts.registerCommand {
-            name = "kpm"
-            description = "Mirai Kts 插件管理器"
-            usage = "kpm [list|info|enable|disable|load|unload] (插件名/文件名)"
-            onCommand { cmd ->
-                if ((cmd.isEmpty() || (cmd[0] != "list" && cmd.size < 2))) {
-                    return@onCommand false
-                }
-                when (cmd[0]) {
-                    "list" -> {
-                        var size = 0L
-                        var cnt = 0
-                        cache.listFiles()?.filter { it.name.endsWith(".mkc") }?.forEach { f ->
-                            size += f.length()
-                            cnt++
-                        }
-
-                        appendMessage("")
-                        appendMessage("MiraiKts 已生成 $cnt 个缓存文件，共 ${(size / 1024).toInt()} KB。")
-                        appendMessage("共加载了 " + plugins.size + " 个 MiraiKts 插件。")
-                        appendMessage("")
-                        plugins.values.forEach { p ->
-                            getCommonPluginInfo(p, this)
-                            appendMessage("")
-                        }
-                    }
-                    "info" -> {
-                        if (plugins.containsKey(cmd[1].toInt())) {
-                            val p = plugins[cmd[1].toInt()]!!
-                            appendMessage("插件信息：")
-                            getCommonPluginInfo(p, this)
-                            appendMessage("")
-                            appendMessage("使用缓存启动：" + (if (!p.cacheMeta.source) "是" else "否"))
-                            appendMessage("缓存文件头：" + p.cacheMeta.header)
-                            appendMessage("缓存源文件MD5：" + p.cacheMeta.checksum)
-                            appendMessage("缓存源文件名：" + p.cacheMeta.origin)
-                            appendMessage("缓存文件：" + p.cacheMeta.file.name)
-                            appendMessage("")
-                        } else {
-                            appendMessage("Id " + cmd[1] + " 不存在。")
-                        }
-                    }
-                    "load" -> {
-                        if (!loadPlugin(File(plDir.absolutePath + File.separatorChar + cmd[1]))) {
-                            appendMessage("文件 \"${cmd[1]}\" 非法。")
-                        }
-                    }
-                    "unload" -> {
-                        if (plugins.containsKey(cmd[1].toInt())) {
-                            unloadPlugin(plugins[cmd[1].toInt()]!!)
-                        } else {
-                            appendMessage("Id " + cmd[1] + " 不存在。")
-                        }
-                    }
-                    "enable" -> {
-                        if (plugins.containsKey(cmd[1].toInt())) {
-                            plugins[cmd[1].toInt()]!!.enable()
-                        } else {
-                            appendMessage("Id " + cmd[1] + " 不存在。")
-                        }
-                    }
-                    "disable" -> {
-                        if (plugins.containsKey(cmd[1].toInt())) {
-                            plugins[cmd[1].toInt()]!!.disable()
-                        } else {
-                            appendMessage("Id " + cmd[1] + " 不存在。")
-                        }
-                    }
-                    else -> return@onCommand false
-                }
-                return@onCommand true
-            }
-        }
+        command.register()
     }
 }

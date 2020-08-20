@@ -22,11 +22,17 @@
  *
  */
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.features.BrowserUserAgent
-import io.ktor.client.request.get
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.features.*
+import io.ktor.client.request.*
 import kotlinx.coroutines.launch
+import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
+import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
+import net.mamoe.mirai.console.command.CommandSender
+import net.mamoe.mirai.console.command.ConsoleCommandOwner
+import net.mamoe.mirai.console.command.SimpleCommand
+import net.mamoe.mirai.console.command.sendMessage
 import net.mamoe.mirai.event.events.BotOnlineEvent
 import net.mamoe.mirai.event.subscribeAlways
 import net.mamoe.mirai.message.GroupMessageEvent
@@ -39,6 +45,16 @@ fun KtsPlugin.doSomething() {
     logger.info("数据文件夹 $dataDir")
 }
 
+object KtsCommand : SimpleCommand(
+    ConsoleCommandOwner, "kts",
+    description = "Kts太强了"
+) {
+    @Handler
+    suspend fun CommandSender.handle() {
+        sendMessage("Kts NB!!!")
+    }
+}
+
 miraiPlugin {
     info {
         name = "KtsPluginExample"
@@ -49,15 +65,6 @@ miraiPlugin {
 
     load {
         logger.info("Hello world from MiraiKts!")
-        registerCommand {
-            name = "kts"
-            description = "Kts太强了"
-            usage = "Kotlin Script"
-            onCommand {
-                logger.info("Kts NB!!!")
-                return@onCommand true
-            }
-        }
         launch {
             val client = HttpClient(CIO) {
                 BrowserUserAgent()
@@ -65,6 +72,7 @@ miraiPlugin {
             val r = client.get<String>("https://im.qq.com")
             logger.info("QQ主页长：${r.length}")
         }
+        KtsCommand.register()
     }
 
     enable {
@@ -83,6 +91,7 @@ miraiPlugin {
     }
 
     unload {
+        KtsCommand.unregister()
         logger.info("KtsPlugin 已卸载！")
     }
 }

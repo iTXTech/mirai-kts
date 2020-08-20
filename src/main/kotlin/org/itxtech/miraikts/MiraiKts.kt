@@ -24,10 +24,10 @@
 
 package org.itxtech.miraikts
 
-import net.mamoe.mirai.console.plugins.PluginBase
+import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import org.itxtech.miraikts.plugin.PluginManager
 
-object MiraiKts : PluginBase() {
+object MiraiKts : KotlinPlugin() {
     private val manager = PluginManager()
 
     override fun onLoad() {

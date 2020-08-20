@@ -31,8 +31,8 @@ dependencies {
     implementation(kotlin("scripting-compiler-impl-embeddable"))
     implementation("org.jetbrains.intellij.deps:trove4j:1.0.20200330")
 
-    implementation("net.mamoe:mirai-core:1.2.0")
-    implementation("net.mamoe:mirai-console:0.5.2")
+    implementation("net.mamoe:mirai-core:1.2.1")
+    implementation("net.mamoe:mirai-console:1.0-M2")
 }
 
 tasks.named<Jar>("jar") {

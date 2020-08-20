@@ -27,11 +27,6 @@ package org.itxtech.miraikts.plugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
-import net.mamoe.mirai.console.MiraiConsole
-import net.mamoe.mirai.console.command.Command
-import net.mamoe.mirai.console.command.CommandBuilder
-import net.mamoe.mirai.console.command.CommandManager
-import net.mamoe.mirai.console.command.registerCommand
 import net.mamoe.mirai.utils.MiraiLogger
 import net.mamoe.mirai.utils.SimpleLogger
 import org.itxtech.miraikts.MiraiKts
@@ -92,21 +87,12 @@ open class KtsPlugin(
     var id: Int = 0
     var enabled = false
     val dataDir: File by lazy { manager.getPluginDataDir(info.name) }
-    val commands = arrayListOf<Command>()
 
     val logger: MiraiLogger by lazy {
         SimpleLogger("KtsPlugin ${info.name}") { priority, message, e ->
-            val identityString = "[MiraiKts] [${info.name}]"
-            MiraiConsole.frontEnd.pushLog(priority, identityString, 0, message!!)
-            if (e != null) {
-                MiraiConsole.frontEnd.pushLog(priority, identityString, 0, e.toString())
-            }
+            MiraiKts.logger.call(priority, "[${info.name}] $message", e)
         }
     }
-
-    fun registerCommand(builder: CommandBuilder.() -> Unit) =
-        MiraiKts.registerCommand(builder).apply { commands += this }
-
 
     /**
      * 必须保证只被调用一次
@@ -135,9 +121,6 @@ open class KtsPlugin(
         disable()
         onUnload()
         job.cancel()
-        commands.forEach {
-            CommandManager.unregister(it)
-        }
     }
 
     open fun onLoad() = load?.invoke(this)
