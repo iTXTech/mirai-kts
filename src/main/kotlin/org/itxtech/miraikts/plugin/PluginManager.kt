@@ -29,8 +29,6 @@ import kotlinx.coroutines.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandSender
 import net.mamoe.mirai.console.command.CompositeCommand
-import net.mamoe.mirai.console.command.ConsoleCommandOwner
-import net.mamoe.mirai.console.command.sendMessage
 import net.mamoe.mirai.console.util.ConsoleExperimentalAPI
 import net.mamoe.mirai.utils.currentTimeMillis
 import org.itxtech.miraikts.MiraiKts
@@ -272,7 +270,7 @@ open class PluginManager {
 
     @OptIn(ConsoleExperimentalAPI::class)
     class KpmCommand(val manager: PluginManager) : CompositeCommand(
-        ConsoleCommandOwner, "kpm",
+        MiraiKts, "kpm",
         description = "Mirai Kts 插件管理器"
     ) {
         private fun StringBuilder.getCommonPluginInfo(p: KtsPlugin) {

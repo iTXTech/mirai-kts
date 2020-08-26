@@ -29,10 +29,9 @@ import io.ktor.client.request.*
 import kotlinx.coroutines.launch
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
+import net.mamoe.mirai.console.command.CommandOwner
 import net.mamoe.mirai.console.command.CommandSender
-import net.mamoe.mirai.console.command.ConsoleCommandOwner
 import net.mamoe.mirai.console.command.SimpleCommand
-import net.mamoe.mirai.console.command.sendMessage
 import net.mamoe.mirai.event.events.BotOnlineEvent
 import net.mamoe.mirai.event.subscribeAlways
 import net.mamoe.mirai.message.GroupMessageEvent
@@ -45,8 +44,10 @@ fun KtsPlugin.doSomething() {
     logger.info("数据文件夹 $dataDir")
 }
 
+object Owner : CommandOwner
+
 object KtsCommand : SimpleCommand(
-    ConsoleCommandOwner, "kts",
+    Owner, "kts",
     description = "Kts太强了"
 ) {
     @Handler
